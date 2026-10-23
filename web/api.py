@@ -3,16 +3,80 @@ FastAPI Web Dashboard for Logiq
 REST API endpoints for bot statistics and management
 """
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
+from fastapi.responses import HTMLResponse, RedirectResponse
+from typing import Optional
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode, quote
 import logging
 import os
+import time
 
 logger = logging.getLogger(__name__)
+
+TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
+
+# Permessi richiesti dall'invito: moderazione, ruoli, canali, messaggi, voce (musica / temp voice)
+INVITE_PERMISSIONS = 1099800374358
+INVITE_SCOPES = "bot applications.commands"
+
+
+def _read_template(name: str, fallback: str) -> str:
+    """Leggi un template HTML dalla cartella web/templates"""
+    path = os.path.join(TEMPLATE_DIR, name)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    logger.warning("Template %s non trovato in %s", name, TEMPLATE_DIR)
+    return fallback
+
+
+def _format_uptime(seconds: int) -> str:
+    """Formatta una durata in secondi come '2g 3h 14m'"""
+    days, rest = divmod(max(seconds, 0), 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes = rest // 60
+    parts = []
+    if days:
+        parts.append(f"{days}g")
+    if days or hours:
+        parts.append(f"{hours}h")
+    parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
+def _client_id(bot) -> Optional[str]:
+    """Client ID dell'app Discord: da env se presente, altrimenti dall'utente del bot"""
+    env_id = os.getenv("DISCORD_CLIENT_ID")
+    if env_id:
+        return env_id
+    if bot.user:
+        return str(bot.user.id)
+    return None
+
+
+def _invite_url(bot) -> Optional[str]:
+    """Costruisci il link di invito del bot"""
+    client_id = _client_id(bot)
+    if not client_id:
+        return None
+    query = urlencode(
+        {
+            "client_id": client_id,
+            "permissions": INVITE_PERMISSIONS,
+            "scope": INVITE_SCOPES,
+        },
+        quote_via=quote,
+    )
+    return f"https://discord.com/oauth2/authorize?{query}"
+
+
+def _uptime_seconds(bot) -> int:
+    start = getattr(bot, "start_time", None)
+    if not start:
+        return 0
+    return int((datetime.now(timezone.utc) - start).total_seconds())
 
 
 def create_app(bot) -> FastAPI:
@@ -36,43 +100,57 @@ def create_app(bot) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def root():
-        """Admin Dashboard Homepage"""
-        html_file = os.path.join(os.path.dirname(__file__), "templates", "index.html")
-        if os.path.exists(html_file):
-            with open(html_file, "r", encoding="utf-8") as f:
-                return f.read()
-        return """
-        <html>
-            <head><title>Logiq Admin Dashboard</title></head>
-            <body>
-                <h1>Logiq API</h1>
-                <p>Version: 1.0.0</p>
-                <p>Status: Online</p>
-                <p>Bot User: {}</p>
-                <p><a href="/admin">Go to Admin Dashboard</a></p>
-            </body>
-        </html>
-        """.format(str(bot.user) if bot.user else "Loading...")
+        """Homepage pubblica"""
+        return _read_template(
+            "index.html",
+            "<h1>Logiq</h1><p>Homepage non trovata (web/templates/index.html).</p>",
+        )
 
     @app.get("/admin", response_class=HTMLResponse)
     async def admin_dashboard():
-        """Admin Dashboard"""
-        html_file = os.path.join(os.path.dirname(__file__), "templates", "admin.html")
-        if os.path.exists(html_file):
-            with open(html_file, "r", encoding="utf-8") as f:
-                return f.read()
-        # Return fallback if template doesn't exist
-        return "<h1>Admin Dashboard - Template not found</h1>"
+        """Dashboard (in arrivo)"""
+        return _read_template(
+            "admin.html",
+            "<h1>Dashboard</h1><p>In arrivo.</p>",
+        )
+
+    @app.get("/invite")
+    async def invite():
+        """Reindirizza al link di invito del bot"""
+        url = _invite_url(bot)
+        if not url:
+            raise HTTPException(status_code=503, detail="Il bot si sta ancora avviando, riprova tra qualche secondo")
+        return RedirectResponse(url)
+
+    @app.get("/api/public")
+    async def public_info():
+        """Dati pubblici per la homepage (solo numeri aggregati)"""
+        user = bot.user
+        uptime = _uptime_seconds(bot)
+        return {
+            "ready": bot.is_ready(),
+            "name": user.name if user else "Logiq",
+            "avatar_url": str(user.display_avatar.url) if user else None,
+            "invite_url": _invite_url(bot),
+            "guilds": len(bot.guilds),
+            "users": sum((g.member_count or 0) for g in bot.guilds),
+            "commands": len(bot.tree.get_commands()),
+            "latency_ms": round(bot.latency * 1000) if bot.is_ready() else None,
+            "uptime_seconds": uptime,
+            "uptime": _format_uptime(uptime),
+        }
 
     @app.get("/stats")
     async def get_stats():
         """Get bot statistics"""
+        uptime = _uptime_seconds(bot)
         return {
             "guilds": len(bot.guilds),
-            "users": sum(g.member_count for g in bot.guilds),
+            "users": sum((g.member_count or 0) for g in bot.guilds),
             "channels": sum(len(g.channels) for g in bot.guilds),
-            "uptime": str(datetime.utcnow() - bot.start_time).split('.')[0] if hasattr(bot, 'start_time') else "Unknown",
-            "latency": round(bot.latency * 1000)
+            "uptime": _format_uptime(uptime),
+            "uptime_seconds": uptime,
+            "latency": round(bot.latency * 1000) if bot.is_ready() else None
         }
 
     @app.get("/guilds")
@@ -98,6 +176,8 @@ def create_app(bot) -> FastAPI:
             raise HTTPException(status_code=404, detail="Guild not found")
 
         guild_config = await bot.db.get_guild(guild_id)
+        if guild_config:
+            guild_config.pop("_id", None)
 
         return {
             "id": guild.id,
@@ -116,6 +196,7 @@ def create_app(bot) -> FastAPI:
         if not guild:
             raise HTTPException(status_code=404, detail="Guild not found")
 
+        limit = max(1, min(limit, 100))
         leaderboard = await bot.db.get_leaderboard(guild_id, limit=limit)
 
         return {
@@ -138,8 +219,9 @@ def create_app(bot) -> FastAPI:
         if not guild:
             raise HTTPException(status_code=404, detail="Guild not found")
 
-        end_time = datetime.utcnow().timestamp()
-        start_time = (datetime.utcnow() - timedelta(days=days)).timestamp()
+        days = max(1, min(days, 90))
+        end_time = time.time()
+        start_time = end_time - timedelta(days=days).total_seconds()
 
         # Get analytics data
         messages = await bot.db.get_analytics(
@@ -181,7 +263,7 @@ def create_app(bot) -> FastAPI:
             "status": "healthy" if bot.is_ready() and db_connected else "unhealthy",
             "bot_ready": bot.is_ready(),
             "database_connected": db_connected,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     @app.get("/modules")

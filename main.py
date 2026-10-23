@@ -88,7 +88,7 @@ class Logiq(commands.Bot):
         """Called when bot is ready"""
         self.logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         self.logger.info(f"Connected to {len(self.guilds)} guilds")
-        self.logger.info(f"Serving {sum(g.member_count for g in self.guilds)} users")
+        self.logger.info(f"Serving {sum(g.member_count or 0 for g in self.guilds)} users")
 
         # Set status
         activity_type = self.config['bot'].get('activity_type', 'watching')

@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logiq — il bot per la tua community Discord</title>
+<meta name="description" content="Moderazione, livelli, economia, ticket, verifica, musica e molto altro. Aggiungi Logiq al tuo server Discord.">
+<style>
+  :root {
+    --bg: #0b0d17;
+    --bg-2: #11142a;
+    --card: #151937;
+    --line: #232850;
+    --text: #eef0ff;
+    --muted: #9aa0c7;
+    --accent: #6c7bff;
+    --accent-2: #b06cff;
+    --good: #3ddc97;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  .wrap { width: min(1120px, 100% - 40px); margin-inline: auto; }
+
+  /* Navbar */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(11, 13, 23, .8);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-in { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; letter-spacing: -.02em; }
+  .logo {
+    width: 32px; height: 32px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: grid; place-items: center; font-weight: 900; font-size: 18px; color: #fff;
+  }
+  .nav-links { display: flex; align-items: center; gap: 26px; color: var(--muted); font-size: 15px; }
+  .nav-links a:hover { color: var(--text); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 22px; border-radius: 12px; font-weight: 700; font-size: 15px;
+    border: 1px solid transparent; cursor: pointer; transition: transform .15s, box-shadow .15s, background .15s;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff; box-shadow: 0 8px 28px rgba(108, 123, 255, .35);
+  }
+  .btn-primary:hover { box-shadow: 0 12px 36px rgba(108, 123, 255, .5); }
+  .btn-ghost { background: transparent; border-color: var(--line); color: var(--text); }
+  .btn-ghost:hover { background: var(--card); }
+  .btn[aria-disabled="true"] { opacity: .55; pointer-events: none; }
+  .btn-lg { padding: 16px 30px; font-size: 17px; border-radius: 14px; }
+
+  /* Hero */
+  .hero { position: relative; overflow: hidden; padding: 96px 0 72px; text-align: center; }
+  .hero::before {
+    content: ""; position: absolute; inset: -20% -10% auto -10%; height: 520px; z-index: -1;
+    background:
+      radial-gradient(500px 280px at 25% 30%, rgba(108, 123, 255, .35), transparent 70%),
+      radial-gradient(480px 280px at 75% 20%, rgba(176, 108, 255, .28), transparent 70%);
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line); color: var(--muted); font-size: 13px; margin-bottom: 26px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--good); box-shadow: 0 0 10px var(--good); }
+  h1 { font-size: clamp(38px, 7vw, 68px); line-height: 1.05; letter-spacing: -.035em; font-weight: 900; }
+  h1 .grad { background: linear-gradient(135deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { max-width: 640px; margin: 22px auto 36px; color: var(--muted); font-size: 18px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+  .note { margin-top: 14px; color: var(--muted); font-size: 13px; min-height: 20px; }
+
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 64px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px 16px; }
+  .stat b { display: block; font-size: 32px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 14px; }
+
+  /* Sections */
+  section { padding: 72px 0; }
+  .sec-head { text-align: center; max-width: 620px; margin: 0 auto 44px; }
+  .sec-head h2 { font-size: clamp(28px, 4vw, 40px); letter-spacing: -.025em; line-height: 1.15; }
+  .sec-head p { color: var(--muted); margin-top: 12px; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px;
+    transition: transform .2s, border-color .2s;
+  }
+  .card:hover { transform: translateY(-4px); border-color: var(--accent); }
+  .ico {
+    width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 22px;
+    background: linear-gradient(135deg, rgba(108,123,255,.25), rgba(176,108,255,.25)); margin-bottom: 14px;
+  }
+  .card h3 { font-size: 18px; margin-bottom: 6px; }
+  .card p { color: var(--muted); font-size: 15px; }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: s; }
+  .step { background: var(--bg-2); border: 1px solid var(--line); border-radius: 18px; padding: 26px; counter-increment: s; }
+  .step::before {
+    content: counter(s); display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); font-weight: 800; margin-bottom: 14px;
+  }
+  .step h3 { margin-bottom: 6px; }
+  .step p { color: var(--muted); font-size: 15px; }
+
+  .final {
+    text-align: center; background: linear-gradient(135deg, rgba(108,123,255,.18), rgba(176,108,255,.18));
+    border: 1px solid var(--line); border-radius: 26px; padding: 56px 24px;
+  }
+  .final h2 { font-size: clamp(26px, 4vw, 38px); letter-spacing: -.025em; margin-bottom: 12px; }
+  .final p { color: var(--muted); margin-bottom: 26px; }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0; color: var(--muted); font-size: 14px; }
+  .foot { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+
+  @media (max-width: 860px) {
+    .grid, .steps { grid-template-columns: 1fr 1fr; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    .nav-links a.hide-sm { display: none; }
+  }
+  @media (max-width: 560px) {
+    .grid, .steps { grid-template-columns: 1fr; }
+    .hero { padding-top: 64px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-in">
+    <a href="/" class="brand"><span class="logo">L</span><span id="brandName">Logiq</span></a>
+    <div class="nav-links">
+      <a href="#funzioni" class="hide-sm">Funzioni</a>
+      <a href="#come-funziona" class="hide-sm">Come funziona</a>
+      <a href="/admin" class="hide-sm">Dashboard</a>
+      <a href="/invite" class="btn btn-primary js-invite" style="padding:9px 16px">Aggiungi al server</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="pill"><span class="dot" id="statusDot"></span><span id="statusText">Controllo lo stato…</span></div>
+    <h1>Il bot che fa crescere<br>la tua <span class="grad">community</span></h1>
+    <p class="lead">Moderazione, livelli, economia, ticket, verifica, musica e giveaway in un solo bot. Si configura in pochi minuti, direttamente da Discord.</p>
+    <div class="cta">
+      <a href="/invite" class="btn btn-primary btn-lg js-invite">Aggiungi a Discord</a>
+      <a href="#funzioni" class="btn btn-ghost btn-lg">Scopri le funzioni</a>
+    </div>
+    <p class="note" id="inviteNote"></p>
+
+    <div class="stats">
+      <div class="stat"><b id="sGuilds">–</b><span>Server</span></div>
+      <div class="stat"><b id="sUsers">–</b><span>Utenti</span></div>
+      <div class="stat"><b id="sCommands">–</b><span>Comandi</span></div>
+      <div class="stat"><b id="sUptime">–</b><span>Online da</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="funzioni">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Tutto quello che serve a un server</h2>
+      <p>Ogni modulo funziona da solo e puoi attivare solo ciò che ti serve.</p>
+    </div>
+    <div class="grid">
+      <article class="card"><div class="ico">🛡️</div><h3>Moderazione</h3><p>Ban, kick, timeout, avvisi, anti-spam e log delle azioni per tenere il server in ordine.</p></article>
+      <article class="card"><div class="ico">📈</div><h3>Livelli e XP</h3><p>Premia chi partecipa con XP per messaggi e voce, classifiche e ruoli per livello.</p></article>
+      <article class="card"><div class="ico">💎</div><h3>Economia</h3><p>Valuta virtuale, ricompensa giornaliera, negozio e scommesse tra i membri.</p></article>
+      <article class="card"><div class="ico">🎫</div><h3>Ticket</h3><p>Supporto organizzato con canali privati, ruolo staff e registro delle conversazioni.</p></article>
+      <article class="card"><div class="ico">✅</div><h3>Verifica</h3><p>Accoglienza dei nuovi membri con verifica a pulsante e assegnazione automatica del ruolo.</p></article>
+      <article class="card"><div class="ico">🎭</div><h3>Ruoli</h3><p>Ruoli autoassegnabili e reaction roles per lasciare scegliere ai membri.</p></article>
+      <article class="card"><div class="ico">🎵</div><h3>Musica</h3><p>Riproduzione musicale nei canali vocali, con coda e controlli.</p></article>
+      <article class="card"><div class="ico">🎁</div><h3>Giveaway</h3><p>Sorteggi con scadenza, vincitori multipli e annuncio automatico.</p></article>
+      <article class="card"><div class="ico">🎮</div><h3>Giochi e vocali temporanee</h3><p>Minigiochi per animare la chat e canali vocali che si creano e si cancellano da soli.</p></article>
+    </div>
+  </div>
+</section>
+
+<section id="come-funziona" style="background:var(--bg-2)">
+  <div class="wrap">
+    <div class="sec-head"><h2>Pronto in tre passi</h2></div>
+    <div class="steps">
+      <div class="step"><h3>Invita il bot</h3><p>Premi “Aggiungi a Discord” e scegli il server da gestire. Serve il permesso di gestire il server.</p></div>
+      <div class="step"><h3>Configura</h3><p>Imposta canali di log, benvenuto e ruoli con i comandi slash del bot.</p></div>
+      <div class="step"><h3>Lascia fare a Logiq</h3><p>Moderazione, livelli e ticket partono subito e lavorano al posto tuo.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="final">
+      <h2>Porta Logiq nel tuo server</h2>
+      <p>Gratis da provare, nessuna configurazione complicata.</p>
+      <a href="/invite" class="btn btn-primary btn-lg js-invite">Aggiungi a Discord</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <span>© <span id="year"></span> Logiq</span>
+    <span><a href="/docs">API</a> · <a href="/health">Stato</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var fmt = new Intl.NumberFormat('it-IT');
+  var $ = function (id) { return document.getElementById(id); };
+
+  $('year').textContent = new Date().getFullYear();
+
+  function setText(id, value) { $(id).textContent = value; }
+
+  function countUp(id, target) {
+    var el = $(id);
+    if (typeof target !== 'number' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      el.textContent = typeof target === 'number' ? fmt.format(target) : '–';
+      return;
+    }
+    var start = performance.now(), dur = 900;
+    function tick(now) {
+      var p = Math.min((now - start) / dur, 1);
+      el.textContent = fmt.format(Math.round(target * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function setInvite(url) {
+    var links = document.querySelectorAll('.js-invite');
+    for (var i = 0; i < links.length; i++) {
+      if (url) {
+        links[i].setAttribute('href', url);
+        links[i].removeAttribute('aria-disabled');
+      } else {
+        links[i].setAttribute('aria-disabled', 'true');
+      }
+    }
+    setText('inviteNote', url ? '' : 'Il bot si sta avviando: riprova tra qualche secondo.');
+  }
+
+  function load() {
+    fetch('/api/public', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) {
+        $('statusDot').className = 'dot' + (d.ready ? ' on' : '');
+        setText('statusText', d.ready ? 'Online' + (d.latency_ms != null ? ' · ' + d.latency_ms + ' ms' : '') : 'In avvio…');
+        if (d.name) setText('brandName', d.name);
+        setInvite(d.invite_url);
+        countUp('sGuilds', d.guilds);
+        countUp('sUsers', d.users);
+        countUp('sCommands', d.commands);
+        setText('sUptime', d.uptime || '–');
+        if (!d.ready) setTimeout(load, 5000);
+      })
+      .catch(function () {
+        setText('statusText', 'Stato non disponibile');
+        setInvite(null);
+        setTimeout(load, 10000);
+      });
+  }
+  load();
+})();
+</script>
+</body>
+</html>

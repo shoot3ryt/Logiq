@@ -4,6 +4,7 @@ Handles async MongoDB operations with connection pooling
 """
 
 import asyncio
+import time
 from typing import Optional, Dict, Any, List
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import logging
@@ -78,7 +79,7 @@ class DatabaseManager:
             "balance": 1000,
             "inventory": [],
             "warnings": [],
-            "created_at": asyncio.get_event_loop().time()
+            "created_at": time.time()
         }
         if data:
             user_data.update(data)
@@ -116,7 +117,7 @@ class DatabaseManager:
             "log_channel": None,
             "welcome_channel": None,
             "verified_role": None,
-            "created_at": asyncio.get_event_loop().time()
+            "created_at": time.time()
         }
         if data:
             guild_data.update(data)
@@ -199,7 +200,7 @@ class DatabaseManager:
         """Log analytics event"""
         event = {
             "type": event_type,
-            "timestamp": asyncio.get_event_loop().time(),
+            "timestamp": time.time(),
             **data
         }
         await self.db.analytics.insert_one(event)
