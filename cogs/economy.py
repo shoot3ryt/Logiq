@@ -29,12 +29,19 @@ class Economy(commands.Cog):
         self.currency_symbol = self.module_config.get('currency_symbol', '💎')
         self.currency_name = self.module_config.get('currency_name', 'ProgrammiCoin')
 
+    async def currency(self, guild_id: int):
+        """(simbolo, nome) della valuta del server, con valori di riserva dalla configurazione"""
+        symbol = await self.bot.guild_setting(guild_id, 'currency_symbol', self.currency_symbol)
+        name = await self.bot.guild_setting(guild_id, 'currency_name', self.currency_name)
+        return symbol, name
+
     # NOTE: /balance command has been moved to games.py as PUBLIC command
 
     @app_commands.command(name="daily", description="Claim your daily reward (Admin)")
     @is_admin()
     async def daily(self, interaction: discord.Interaction):
         """Claim daily reward"""
+        symbol, _ = await self.currency(interaction.guild.id)
         user_data = await self.db.get_user(interaction.user.id, interaction.guild.id)
         if not user_data:
             user_data = await self.db.create_user(interaction.user.id, interaction.guild.id)
@@ -67,8 +74,8 @@ class Economy(commands.Cog):
 
         embed = EmbedFactory.success(
             "Daily Reward Claimed!",
-            f"You received **{self.currency_symbol} {daily_amount:,}**!\n\n"
-            f"New balance: **{self.currency_symbol} {new_balance:,}**"
+            f"You received **{symbol} {daily_amount:,}**!\n\n"
+            f"New balance: **{symbol} {new_balance:,}**"
         )
         await interaction.response.send_message(embed=embed)
         logger.info(f"{interaction.user} claimed daily reward in {interaction.guild}")
@@ -81,6 +88,7 @@ class Economy(commands.Cog):
     @is_admin()
     async def give(self, interaction: discord.Interaction, user: discord.Member, amount: int):
         """Give currency to user"""
+        symbol, _ = await self.currency(interaction.guild.id)
         if amount <= 0:
             await interaction.response.send_message(
                 embed=EmbedFactory.error("Invalid Amount", "Amount must be positive"),
@@ -120,7 +128,7 @@ class Economy(commands.Cog):
 
         embed = EmbedFactory.success(
             "Transfer Complete",
-            f"{interaction.user.mention} gave **{self.currency_symbol} {amount:,}** to {user.mention}"
+            f"{interaction.user.mention} gave **{symbol} {amount:,}** to {user.mention}"
         )
         await interaction.response.send_message(embed=embed)
         logger.info(f"{interaction.user} gave {amount} to {user}")
@@ -133,6 +141,7 @@ class Economy(commands.Cog):
     @is_admin()
     async def coinflip(self, interaction: discord.Interaction, amount: int, choice: str):
         """Coinflip gambling"""
+        symbol, _ = await self.currency(interaction.guild.id)
         if amount <= 0:
             await interaction.response.send_message(
                 embed=EmbedFactory.error("Invalid Amount", "Amount must be positive"),
@@ -173,8 +182,8 @@ class Economy(commands.Cog):
             embed = EmbedFactory.success(
                 "🎉 You Won!",
                 f"The coin landed on **{result}**!\n\n"
-                f"You won **{self.currency_symbol} {amount:,}**!\n"
-                f"New balance: **{self.currency_symbol} {new_balance:,}**"
+                f"You won **{symbol} {amount:,}**!\n"
+                f"New balance: **{symbol} {new_balance:,}**"
             )
         else:
             await self.db.remove_balance(interaction.user.id, interaction.guild.id, amount)
@@ -182,8 +191,8 @@ class Economy(commands.Cog):
             embed = EmbedFactory.error(
                 "You Lost!",
                 f"The coin landed on **{result}**!\n\n"
-                f"You lost **{self.currency_symbol} {amount:,}**!\n"
-                f"New balance: **{self.currency_symbol} {new_balance:,}**"
+                f"You lost **{symbol} {amount:,}**!\n"
+                f"New balance: **{symbol} {new_balance:,}**"
             )
 
         await interaction.response.send_message(embed=embed)
@@ -192,6 +201,7 @@ class Economy(commands.Cog):
     @is_admin()
     async def shop(self, interaction: discord.Interaction):
         """View shop"""
+        symbol, _ = await self.currency(interaction.guild.id)
         items = await self.db.get_shop_items(interaction.guild.id)
 
         if not items:
@@ -203,7 +213,7 @@ class Economy(commands.Cog):
 
         description = ""
         for item in items[:25]:
-            description += f"**{item['name']}** - {self.currency_symbol} {item['price']:,}\n"
+            description += f"**{item['name']}** - {symbol} {item['price']:,}\n"
             description += f"  *{item['description']}*\n\n"
 
         embed = EmbedFactory.create(
@@ -227,11 +237,12 @@ class Economy(commands.Cog):
         amount: int
     ):
         """Add balance to user (ADMIN ONLY)"""
+        symbol, _ = await self.currency(interaction.guild.id)
         await self.db.add_balance(user.id, interaction.guild.id, amount)
 
         embed = EmbedFactory.success(
             "Balance Added",
-            f"Added **{self.currency_symbol} {amount:,}** to {user.mention}"
+            f"Added **{symbol} {amount:,}** to {user.mention}"
         )
         await interaction.response.send_message(embed=embed)
         logger.info(f"{interaction.user} added {amount} to {user}")

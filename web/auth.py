@@ -72,7 +72,8 @@ class WebAuth:
             secret = secrets.token_urlsafe(48)
             logger.warning("SESSION_SECRET non impostata: le sessioni della dashboard si perdono a ogni riavvio")
         self.signer = Signer(secret)
-        self.sessions = SessionStore()
+        backend = getattr(bot, "db", None)
+        self.sessions = SessionStore(backend=backend if hasattr(backend, "load_web_sessions") else None)
 
     # ----- configurazione -----
     @property

@@ -153,8 +153,9 @@ class Verification(commands.Cog):
         import re
         for channel in member.guild.text_channels:
             # Replace channel name patterns with actual mentions
-            welcome_message = welcome_message.replace(channel.name, channel.mention)
+            # prima la forma con "#", altrimenti resterebbe un "#" davanti alla menzione
             welcome_message = welcome_message.replace(f"#{channel.name}", channel.mention)
+            welcome_message = welcome_message.replace(channel.name, channel.mention)
         
         # Send welcome message in welcome channel (PUBLIC - everyone can see)
         welcome_channel_id = guild_config.get('welcome_channel')

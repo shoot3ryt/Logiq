@@ -78,6 +78,18 @@
   .stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
   .stat b { display: block; font-size: 28px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
   .stat span { color: var(--muted); font-size: 13px; }
+  .preview { margin-top:14px; background:#1e2140; border-left:4px solid var(--good); border-radius:8px; padding:14px 16px; max-width:520px; font-size:14px; line-height:1.45; }
+  .preview .p-title { font-weight:700; margin-bottom:8px; }
+  .preview .p-body { white-space:pre-wrap; overflow-wrap:anywhere; }
+  .preview .mention { background:rgba(108,123,255,.28); color:#c9d0ff; border-radius:4px; padding:0 3px; }
+  .badge { display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+  .badge.good { color: var(--good); border-color: var(--good); }
+  .badge.warn { color: var(--warn); border-color: var(--warn); }
+  .checklist { max-height:220px; overflow:auto; border:1px solid var(--line); border-radius:12px; padding:8px 12px; }
+  .field .checklist label { display:flex; gap:10px; align-items:center; padding:6px 0; font-size:14px; font-weight:400; margin:0; }
+  .checklist input[type="checkbox"] { width:16px; height:16px; margin:0; flex:none; }
+  .item-row { display:flex; justify-content:space-between; gap:14px; align-items:center; padding:12px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .item-row:first-child { border-top:0; }
   .panel { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin-bottom: 22px; }
   .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
@@ -100,7 +112,7 @@
   .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
   .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
   .field .hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
-  select, input[type="number"], textarea {
+  select, input[type="number"], input[type="text"], textarea {
     width: 100%; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
   }
   select:hover, input:hover, textarea:hover { border-color: #343a75; }
@@ -308,7 +320,7 @@
   }
 
   // ---------- server: struttura e schede ----------
-  var TABS = [['overview', 'Panoramica'], ['settings', 'Impostazioni'], ['modules', 'Moduli']];
+  var TABS = [['overview', 'Panoramica'], ['settings', 'Impostazioni'], ['modules', 'Moduli'], ['roles', 'Ruoli'], ['tickets', 'Ticket']];
 
   function guildFrame(id, tab, name, iconUrl, content) {
     return h('div', {},
@@ -325,10 +337,12 @@
 
   function renderGuild(id, tab) {
     mount(h('div', { class: 'loading' }, 'Caricamento…'));
-    var path = '/api/guilds/' + id + (tab === 'overview' ? '/overview' : '/settings');
-    api(path).then(function (data) {
+    var paths = { overview: '/overview', roles: '/role-menus', tickets: '/tickets' };
+    api('/api/guilds/' + id + (paths[tab] || '/settings')).then(function (data) {
       if (tab === 'overview') renderOverview(id, data);
       else if (tab === 'settings') renderSettings(id, data);
+      else if (tab === 'roles') renderRoles(id, data);
+      else if (tab === 'tickets') renderTickets(id, data);
       else renderModules(id, data);
     }).catch(function (err) {
       if (err && err.status === 401) return;
@@ -439,6 +453,55 @@
       h('div', { class: 'hint', text: 'Vuoto = valore predefinito (' + fmt.format(def) + ')' }));
   }
 
+  function textField(label, key, value, def, max, fieldsRef) {
+    var input = h('input', { type: 'text', id: 'f-' + key, name: key, maxlength: String(max), placeholder: def });
+    if (value) input.value = value;
+    fieldsRef[key] = function () { return input.value.trim() || null; };
+    return h('div', { class: 'field' }, h('label', { for: 'f-' + key }, label), input,
+      h('div', { class: 'hint', text: 'Vuoto = valore predefinito (' + def + ')' }));
+  }
+
+  // Anteprima del benvenuto: stesse sostituzioni del bot (cogs/verification.py).
+  // Tutto viene inserito come testo (textContent), mai come HTML.
+  var S_OPEN = '', S_CLOSE = '', C_OPEN = '', C_CLOSE = '';
+  function previewParts(template, serverName, channels) {
+    serverName = String(serverName).replace(/[\uE000-\uE003]/g, '');
+    var t = String(template || '').replace(/[-]/g, '');
+    t = t.split('{user}').join(S_OPEN + 'u' + S_CLOSE)
+         .split('{username}').join('Mario')
+         .split('{server}').join(serverName);
+    channels.forEach(function (c) {
+      if (!c.name) return;
+      var ref = C_OPEN + c.id + C_CLOSE;
+      t = t.split('#' + c.name).join(ref).split(c.name).join(ref);
+    });
+    var names = {};
+    channels.forEach(function (c) { names[c.id] = c.name; });
+    var out = [], re = /u|(\d+)/g, last = 0, m;
+    while ((m = re.exec(t))) {
+      if (m.index > last) out.push({ text: t.slice(last, m.index) });
+      out.push({ mention: m[1] ? '#' + (names[m[1]] || '?') : '@Mario' });
+      last = re.lastIndex;
+    }
+    if (last < t.length) out.push({ text: t.slice(last) });
+    return out;
+  }
+  function fillPreview(box, template, serverName, channels) {
+    var tpl = template && template.trim() ? template
+      : 'Welcome to **' + serverName + '**! 👋\n\nPlease verify yourself to gain access to the server.';
+    box.textContent = '';
+    box.appendChild(h('div', { class: 'p-title', text: '👋 Welcome to ' + serverName + '!' }));
+    var body = h('div', { class: 'p-body' });
+    previewParts('{user}\n\n' + tpl, serverName, channels).forEach(function (part) {
+      if (part.mention) { body.appendChild(h('span', { class: 'mention', text: part.mention })); return; }
+      part.text.split(/(\*\*[^*]+\*\*)/).forEach(function (seg) {
+        if (/^\*\*[^*]+\*\*$/.test(seg)) body.appendChild(h('b', { text: seg.slice(2, -2) }));
+        else if (seg) body.appendChild(document.createTextNode(seg));
+      });
+    });
+    box.appendChild(body);
+  }
+
   function renderSettings(id, d) {
     var f = {}, v = d.values, ch = d.channels;
     var typeSel = h('select', { id: 'f-verification_type' },
@@ -454,7 +517,9 @@
     f.welcome_message = function () { return msg.value.trim() ? msg.value : null; };
     var counter = h('div', { class: 'hint' });
     function count() { counter.textContent = 'Segnaposto: {user} menzione, {username} nome, {server} nome del server · ' + msg.value.length + '/1000'; }
-    msg.addEventListener('input', count); count();
+    var preview = h('div', { class: 'preview', id: 'welcome-preview', 'aria-live': 'polite' });
+    function refresh() { fillPreview(preview, msg.value, d.guild.name, ch.text); }
+    msg.addEventListener('input', function () { count(); refresh(); }); count(); refresh();
 
     var saveBtn = h('button', { class: 'btn btn-primary', type: 'button' }, 'Salva impostazioni');
     saveBtn.addEventListener('click', function () {
@@ -482,12 +547,129 @@
         h('div', { class: 'form-grid' },
           h('div', { class: 'field' }, h('label', { for: 'f-verification_type' }, 'Tipo di verifica'), typeSel),
           h('div', { class: 'field' }, h('label', { for: 'f-verification_method' }, 'Dove avviene'), methodSel)),
-        h('div', { class: 'field', style: 'margin-top:18px' }, h('label', { for: 'f-welcome_message' }, 'Messaggio di benvenuto'), msg, counter)),
+        h('div', { class: 'field', style: 'margin-top:18px' }, h('label', { for: 'f-welcome_message' }, 'Messaggio di benvenuto'), msg, counter,
+          h('div', { class: 'hint', style: 'margin-top:10px' }, 'Anteprima (come lo vedranno i nuovi membri):'), preview)),
       h('div', { class: 'panel' }, h('h2', {}, 'Livelli ed economia'), h('div', { class: 'form-grid' },
         numberField('XP per messaggio', 'xp_per_message', v.xp_per_message, d.defaults.xp_per_message, 1, 1000, f),
         numberField('Attesa tra gli XP (secondi)', 'xp_cooldown', v.xp_cooldown, d.defaults.xp_cooldown, 0, 3600, f),
-        numberField('Ricompensa giornaliera', 'daily_reward', v.daily_reward, d.defaults.daily_reward, 0, 1000000, f))),
+        numberField('Ricompensa giornaliera', 'daily_reward', v.daily_reward, d.defaults.daily_reward, 0, 1000000, f),
+        textField('Nome della valuta', 'currency_name', v.currency_name, d.defaults.currency_name, 32, f),
+        textField('Simbolo della valuta', 'currency_symbol', v.currency_symbol, d.defaults.currency_symbol, 8, f))),
       h('div', { class: 'actions' }, saveBtn))));
+  }
+
+  // ---------- ruoli a tendina ----------
+  function fmtDate(ts) {
+    if (typeof ts !== 'number') return '—';
+    return new Date(ts * 1000).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  function renderRoles(id, d) {
+    var base = '/api/guilds/' + id + '/role-menus';
+    var list = d.menus.length ? h('div', {}, d.menus.map(function (m) {
+      var del = h('button', { class: 'btn btn-ghost', type: 'button' }, 'Elimina');
+      del.addEventListener('click', function () {
+        if (!confirm('Eliminare il menu «' + m.title + '» e il suo messaggio?')) return;
+        del.disabled = true;
+        api(base + '/' + m.menu_id, { method: 'DELETE' })
+          .then(function () { toast('Menu eliminato', true); renderGuild(id, 'roles'); })
+          .catch(function (e) { fail(e); del.disabled = false; });
+      });
+      return h('div', { class: 'item-row' },
+        h('div', {},
+          h('b', { text: m.title }), ' ',
+          h('span', { class: 'badge', text: m.exclusive ? 'Una sola scelta' : 'Scelta multipla' }),
+          h('div', { class: 'hint', text: (m.channel ? '#' + m.channel : 'canale eliminato') + ' · ' + (m.roles.join(', ') || 'nessun ruolo valido') })),
+        h('div', { class: 'actions' },
+          m.url ? h('a', { class: 'btn btn-ghost', href: m.url, target: '_blank', rel: 'noopener noreferrer' }, 'Apri su Discord') : null, del));
+    })) : h('div', { class: 'empty' }, 'Nessun menu creato da qui. I menu creati con i comandi prima di questo aggiornamento non compaiono nell\'elenco.');
+
+    var title = h('input', { type: 'text', id: 'rm-title', maxlength: '100', placeholder: 'Scegli i tuoi ruoli' });
+    var desc = h('textarea', { id: 'rm-desc', maxlength: '500', placeholder: 'Facoltativa' });
+    var chan = h('select', { id: 'rm-channel' }, h('option', { value: '' }, '— Scegli il canale —'));
+    d.channels.forEach(function (c) { chan.appendChild(h('option', { value: c.id, text: '#' + c.name })); });
+    var excl = h('input', { type: 'checkbox', id: 'rm-exclusive' });
+    var boxes = [];
+    var checks = h('div', { class: 'checklist', id: 'rm-roles' }, d.roles.filter(function (r) { return r.assignable; }).map(function (r) {
+      var cb = h('input', { type: 'checkbox', value: r.id });
+      boxes.push(cb);
+      return h('label', {}, cb, h('span', { text: r.name }));
+    }));
+    if (!boxes.length) checks.appendChild(h('div', { class: 'hint', text: 'Nessun ruolo assegnabile: il ruolo del bot deve stare sopra agli altri.' }));
+    var create = h('button', { class: 'btn btn-primary', type: 'button' }, 'Pubblica il menu');
+    create.addEventListener('click', function () {
+      var roles = boxes.filter(function (b) { return b.checked; }).map(function (b) { return b.value; });
+      if (!title.value.trim()) return toast('Inserisci un titolo', false);
+      if (!chan.value) return toast('Scegli il canale', false);
+      if (!roles.length) return toast('Scegli almeno un ruolo', false);
+      if (roles.length > 25) return toast('Massimo 25 ruoli per menu', false);
+      create.disabled = true;
+      api(base, { method: 'POST', body: { title: title.value.trim(), description: desc.value.trim() || null, channel_id: chan.value, role_ids: roles, exclusive: excl.checked } })
+        .then(function () { toast('Menu pubblicato', true); renderGuild(id, 'roles'); })
+        .catch(function (e) { fail(e); create.disabled = false; });
+    });
+
+    mount(guildFrame(id, 'roles', d.guild.name, d.guild.icon_url, h('div', {},
+      h('div', { class: 'panel' }, h('h2', {}, 'Menu dei ruoli'),
+        h('p', { class: 'sub', style: 'margin-bottom:12px' }, 'I membri scelgono i ruoli da un menu a tendina nel canale che indichi.'), list),
+      h('div', { class: 'panel' }, h('h2', {}, 'Nuovo menu'),
+        h('div', { class: 'form-grid' },
+          h('div', { class: 'field' }, h('label', { for: 'rm-title' }, 'Titolo'), title),
+          h('div', { class: 'field' }, h('label', { for: 'rm-channel' }, 'Canale'), chan)),
+        h('div', { class: 'field', style: 'margin-top:14px' }, h('label', { for: 'rm-desc' }, 'Descrizione'), desc),
+        h('div', { class: 'field', style: 'margin-top:14px' }, h('label', { for: 'rm-roles' }, 'Ruoli (max 25)'), checks),
+        h('label', { class: 'check', style: 'display:flex;gap:8px;align-items:center;margin-top:14px' }, excl, h('span', { text: 'Una sola scelta per membro (bloccata dopo la prima)' })),
+        h('div', { class: 'actions', style: 'margin-top:16px' }, create)))));
+  }
+
+  // ---------- ticket ----------
+  function renderTickets(id, d) {
+    var base = '/api/guilds/' + id + '/tickets';
+    var chan = h('select', { id: 'tk-channel' }, h('option', { value: '' }, '— Scegli il canale —'));
+    d.channels.forEach(function (c) { chan.appendChild(h('option', { value: c.id, text: '#' + c.name })); });
+    var send = h('button', { class: 'btn btn-primary', type: 'button' }, 'Pubblica il pannello');
+    send.addEventListener('click', function () {
+      if (!chan.value) return toast('Scegli il canale', false);
+      send.disabled = true;
+      api(base + '/panel', { method: 'POST', body: { channel_id: chan.value } })
+        .then(function () { toast('Pannello pubblicato', true); })
+        .catch(fail)
+        .then(function () { send.disabled = false; });
+    });
+
+    var rows = d.tickets.length ? h('div', { class: 'tablewrap' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Ticket'), h('th', {}, 'Utente'), h('th', {}, 'Stato'), h('th', {}, 'Aperto'), h('th', {}, ''))),
+      h('tbody', {}, d.tickets.map(function (t) {
+        var act = h('td', {});
+        if (t.status === 'open') {
+          var close = h('button', { class: 'btn btn-ghost', type: 'button' }, 'Chiudi');
+          close.addEventListener('click', function () {
+            if (!confirm('Chiudere il ticket ed eliminare il canale?')) return;
+            close.disabled = true;
+            api(base + '/' + t.channel_id + '/close', { method: 'POST', body: {} })
+              .then(function () { toast('Ticket in chiusura', true); setTimeout(function () { renderGuild(id, 'tickets'); }, 6500); })
+              .catch(function (e) { fail(e); close.disabled = false; });
+          });
+          act.appendChild(close);
+        } else if (t.reason) {
+          act.appendChild(h('span', { class: 'hint', text: t.reason }));
+        }
+        return h('tr', {},
+          h('td', { text: t.channel ? '#' + t.channel : 'canale eliminato' }),
+          h('td', { text: t.user || '—' }),
+          h('td', {}, h('span', { class: 'badge ' + (t.status === 'open' ? 'good' : ''), text: t.status === 'open' ? 'Aperto' : 'Chiuso' })),
+          h('td', { text: fmtDate(t.created_at) }),
+          act);
+      })))) : h('div', { class: 'empty' }, 'Ancora nessun ticket.');
+
+    mount(guildFrame(id, 'tickets', d.guild.name, d.guild.icon_url, h('div', {},
+      d.configured ? null : h('div', { class: 'panel' }, h('span', { class: 'badge warn', text: 'Da configurare' }), ' ',
+        h('span', {}, 'Scegli la categoria dei ticket nelle '), h('a', { href: '#/g/' + id + '/settings' }, 'Impostazioni'), h('span', {}, ' prima di aprire il pannello.')),
+      h('div', { class: 'panel' }, h('h2', {}, 'Pannello per aprire i ticket'),
+        h('p', { class: 'sub', style: 'margin-bottom:12px' }, 'Pubblica un messaggio con il pulsante «Create Ticket».'),
+        h('div', { class: 'form-grid' }, h('div', { class: 'field' }, h('label', { for: 'tk-channel' }, 'Canale'), chan)),
+        h('div', { class: 'actions', style: 'margin-top:14px' }, send)),
+      h('div', { class: 'panel' }, h('h2', {}, 'Ticket recenti'), rows))));
   }
 
   // ---------- moduli ----------
@@ -578,7 +760,7 @@
     if (parts[0] === 'admin') return renderAdmin();
     if (parts[0] === 'g' && /^\d{5,25}$/.test(parts[1] || '')) {
       var tab = parts[2] || 'overview';
-      if (['overview', 'settings', 'modules'].indexOf(tab) === -1) tab = 'overview';
+      if (['overview', 'settings', 'modules', 'roles', 'tickets'].indexOf(tab) === -1) tab = 'overview';
       return renderGuild(parts[1], tab);
     }
     renderServers();

@@ -195,6 +195,34 @@ class DatabaseManager:
         )
         return result.modified_count > 0
 
+    async def list_tickets(self, guild_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        """Ticket del server, dal più recente"""
+        cursor = self.db.tickets.find({"guild_id": guild_id}).sort("_id", -1).limit(limit)
+        return [doc async for doc in cursor]
+
+    async def get_open_ticket_by_channel(self, guild_id: int, channel_id: int) -> Optional[Dict[str, Any]]:
+        return await self.db.tickets.find_one({"guild_id": guild_id, "channel_id": channel_id, "status": "open"})
+
+    async def close_ticket_by_channel(self, channel_id: int, closed_by: int, reason: str) -> None:
+        await self.db.tickets.update_one(
+            {"channel_id": channel_id},
+            {"$set": {"status": "closed", "closed_by": closed_by, "close_reason": reason, "closed_at": time.time()}}
+        )
+
+    # Role menus (menu a tendina pubblicati nei canali)
+    async def create_role_menu(self, doc: Dict[str, Any]) -> None:
+        await self.db.role_menus.insert_one(doc)
+
+    async def get_role_menus(self, guild_id: int) -> List[Dict[str, Any]]:
+        return [d async for d in self.db.role_menus.find({"guild_id": guild_id}).sort("created_at", -1).limit(100)]
+
+    async def get_all_role_menus(self) -> List[Dict[str, Any]]:
+        return [d async for d in self.db.role_menus.find({})]
+
+    async def delete_role_menu(self, guild_id: int, menu_id: str) -> bool:
+        result = await self.db.role_menus.delete_one({"guild_id": guild_id, "menu_id": menu_id})
+        return result.deleted_count > 0
+
     # Analytics operations
     async def log_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log analytics event"""
@@ -259,3 +287,31 @@ class DatabaseManager:
         """Create shop item"""
         result = await self.db.shop.insert_one(item_data)
         return str(result.inserted_id)
+
+    # ----- sessioni web (dashboard) -----
+    async def ensure_web_indexes(self) -> None:
+        """Indice TTL: MongoDB elimina da solo le sessioni scadute"""
+        await self.db.web_sessions.create_index("expires_at", expireAfterSeconds=0)
+
+    async def save_web_session(self, key: str, data: Dict[str, Any], exp: float, created: float) -> None:
+        from datetime import datetime, timezone
+        await self.db.web_sessions.replace_one(
+            {"_id": key},
+            {
+                "_id": key,
+                "data": data,
+                "exp": exp,
+                "created": created,
+                "expires_at": datetime.fromtimestamp(exp, tz=timezone.utc),
+            },
+            upsert=True,
+        )
+
+    async def delete_web_session(self, key: str) -> None:
+        await self.db.web_sessions.delete_one({"_id": key})
+
+    async def load_web_sessions(self) -> list:
+        rows = []
+        async for doc in self.db.web_sessions.find({"exp": {"$gt": time.time()}}).limit(5000):
+            rows.append((doc["_id"], doc.get("data"), doc.get("exp", 0), doc.get("created", 0)))
+        return rows

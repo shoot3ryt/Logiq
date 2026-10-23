@@ -9,6 +9,7 @@ from discord.ext import commands
 from typing import Optional
 import logging
 import asyncio
+import time
 
 from utils.embeds import EmbedFactory, EmbedColor
 from utils.permissions import is_admin
@@ -51,6 +52,48 @@ class Tickets(commands.Cog):
         self.db = db
         self.config = config
         self.module_config = config.get('modules', {}).get('tickets', {})
+        # Senza questo i pulsanti dei pannelli già pubblicati smettono di rispondere dopo un riavvio
+        self.bot.loop.create_task(self._register_persistent_views())
+
+    async def _register_persistent_views(self):
+        await self.bot.wait_until_ready()
+        self.bot.add_view(TicketCreateView(self))
+        self.bot.add_view(TicketControlView(self))
+        logger.info("Ticket persistent views registered")
+
+    async def send_panel(self, channel) -> discord.Message:
+        """Pubblica il pannello con il pulsante "Create Ticket" """
+        embed = EmbedFactory.create(
+            title="🎫 Support Tickets",
+            description="Need help? Click the button below to create a support ticket!\n\n"
+                       "A private channel will be created where you can discuss your issue with staff.",
+            color=EmbedColor.PRIMARY
+        )
+        return await channel.send(embed=embed, view=TicketCreateView(self))
+
+    async def close_ticket_channel(self, channel, closer_label: str, closer_id: int, reason: str = "Closed from the dashboard"):
+        """Chiude un ticket da fuori Discord (dashboard): log, avviso, stato nel database, poi elimina il canale"""
+        guild = channel.guild
+        guild_config = await self.db.get_guild(guild.id) or {}
+        log_channel = guild.get_channel(guild_config.get('ticket_log_channel') or 0)
+        if log_channel:
+            await log_channel.send(embed=EmbedFactory.create(
+                title="🔒 Ticket Closed",
+                description=f"**Ticket:** {channel.name}\n**Closed by:** {closer_label}\n"
+                           f"**Reason:** {reason}\n**Status:** Closed",
+                color=EmbedColor.WARNING
+            ))
+        try:
+            await channel.send(embed=EmbedFactory.warning(
+                "🔒 Ticket Closing",
+                f"This ticket is being closed by {closer_label}.\n\n**Reason:** {reason}\n\n"
+                f"Channel will be deleted in 5 seconds..."
+            ))
+        except discord.HTTPException:
+            pass
+        await self.db.close_ticket_by_channel(channel.id, closer_id, reason)
+        await asyncio.sleep(5)
+        await channel.delete(reason=f"Ticket closed from the dashboard by {closer_label}")
 
     async def create_ticket_for_user(self, interaction: discord.Interaction):
         """Create a ticket for a user"""
@@ -123,7 +166,8 @@ class Tickets(commands.Cog):
                 "user_id": interaction.user.id,
                 "channel_id": channel.id,
                 "category": "General Support",
-                "status": "open"
+                "status": "open",
+                "created_at": time.time()
             }
             ticket_id = await self.db.create_ticket(ticket_data)
 
@@ -232,7 +276,7 @@ class Tickets(commands.Cog):
             # Find and update ticket by channel_id
             await self.db.db.tickets.update_one(
                 {"channel_id": ticket_channel_id},
-                {"$set": {"status": "closed", "closed_by": interaction.user.id, "close_reason": reason}}
+                {"$set": {"status": "closed", "closed_by": interaction.user.id, "close_reason": reason, "closed_at": time.time()}}
             )
         except Exception as e:
             logger.error(f"Error updating ticket in database: {e}")
@@ -289,15 +333,7 @@ class Tickets(commands.Cog):
     @is_admin()
     async def ticket_panel(self, interaction: discord.Interaction):
         """Send persistent ticket panel (ADMIN ONLY)"""
-        embed = EmbedFactory.create(
-            title="🎫 Support Tickets",
-            description="Need help? Click the button below to create a support ticket!\n\n"
-                       "A private channel will be created where you can discuss your issue with staff.",
-            color=EmbedColor.PRIMARY
-        )
-
-        view = TicketCreateView(self)
-        await interaction.channel.send(embed=embed, view=view)
+        await self.send_panel(interaction.channel)
 
         await interaction.response.send_message(
             embed=EmbedFactory.success("Panel Sent", "Ticket panel created with persistent button!"),

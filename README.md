@@ -401,6 +401,24 @@ e, opzionale, `OWNER_ID`. Nel portale Developer di Discord aggiungi sotto OAuth2
 Chi può gestire un server: chi ha il permesso "Gestisci server" o "Amministratore" (controllato in tempo
 reale). I moduli spenti in `config.yaml` restano spenti ovunque; ogni server può spegnere gli altri dalla dashboard.
 
+### Schede del pannello per server
+
+- **Impostazioni**: canali, ruoli, verifica, messaggio di benvenuto con anteprima, XP, ricompensa giornaliera, nome e simbolo della valuta.
+- **Moduli**: accendi o spegni i moduli per singolo server.
+- **Ruoli**: crea ed elimina i menu a tendina dei ruoli. Quelli creati da qui (o con i comandi) tornano a funzionare dopo ogni riavvio del bot.
+- **Ticket**: pubblica il pannello "Create Ticket", vedi i ticket recenti e chiudi quelli aperti.
+
+Le sessioni di login sono salvate su MongoDB (collezione `web_sessions`, con scadenza automatica). Per non dover rifare il login a ogni riavvio imposta `SESSION_SECRET` nel file `.env`.
+
+### Test
+
+```bash
+pip install -r requirements.txt
+pytest tests -v --deselect tests/test_database.py   # test_database.py richiede un MongoDB locale
+```
+
+I test dell'interfaccia (`tests/test_dashboard_ui.py`) sono facoltativi: servono Node.js e `cd tests/ui && npm install`; senza vengono saltati.
+
 ## 🐛 Troubleshooting
 
 ### Bot Not Starting

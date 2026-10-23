@@ -2,8 +2,10 @@
 API della dashboard: pannello per server (utenti con permessi) e admin panel (proprietario)
 """
 
+import asyncio
 import logging
 import platform
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from importlib import metadata
@@ -23,6 +25,7 @@ CATEGORY_SETTINGS = ("ticket_category",)
 VOICE_SETTINGS = ("temp_voice_creator",)
 ROLE_SETTINGS = ("verified_role", "support_role")
 NUMERIC_SETTINGS = ("xp_per_message", "xp_cooldown", "daily_reward")
+CURRENCY_SETTINGS = ("currency_name", "currency_symbol")
 
 
 class SettingsUpdate(BaseModel):
@@ -44,7 +47,36 @@ class SettingsUpdate(BaseModel):
     xp_per_message: Optional[int] = Field(default=None, ge=1, le=1000)
     xp_cooldown: Optional[int] = Field(default=None, ge=0, le=3600)
     daily_reward: Optional[int] = Field(default=None, ge=0, le=1_000_000)
+    currency_name: Optional[str] = Field(default=None, max_length=32)
+    currency_symbol: Optional[str] = Field(default=None, max_length=8)
     modules: Optional[Dict[str, bool]] = None
+
+
+class RoleMenuCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=500)
+    channel_id: str
+    role_ids: List[str] = Field(min_length=1, max_length=25)
+    exclusive: bool = False
+
+
+class PanelCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channel_id: str
+
+
+class TicketClose(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Optional[str] = Field(default=None, max_length=200)
+
+
+_background_tasks: set = set()
+
+MENU_ID_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
 def _as_id(value: str, field: str) -> int:
@@ -225,8 +257,10 @@ def install(app: FastAPI, bot, auth: WebAuth) -> None:
             "xp_per_message": global_cfg.get("leveling", {}).get("xp_per_message", 10),
             "xp_cooldown": global_cfg.get("leveling", {}).get("xp_cooldown", 60),
             "daily_reward": global_cfg.get("economy", {}).get("daily_reward", 100),
+            "currency_name": global_cfg.get("economy", {}).get("currency_name", "ProgrammiCoin"),
+            "currency_symbol": global_cfg.get("economy", {}).get("currency_symbol", "💎"),
         }
-        for key in NUMERIC_SETTINGS:
+        for key in NUMERIC_SETTINGS + CURRENCY_SETTINGS:
             values[key] = stored.get(key)
 
         modules = []
@@ -305,6 +339,13 @@ def install(app: FastAPI, bot, auth: WebAuth) -> None:
             if field in provided:
                 updates[f"settings.{field}"] = getattr(body, field)
 
+        for field in CURRENCY_SETTINGS:
+            if field in provided:
+                value = getattr(body, field)
+                if value is not None:
+                    value = "".join(ch for ch in value if ch.isprintable()).strip()
+                updates[f"settings.{field}"] = value or None
+
         if "modules" in provided and body.modules is not None:
             unknown = [m for m in body.modules if m not in TOGGLEABLE_MODULES]
             if unknown:
@@ -325,6 +366,166 @@ def install(app: FastAPI, bot, auth: WebAuth) -> None:
             session["user"]["id"], sorted(updates.keys()), guild.id,
         )
         return {"ok": True, "updated": sorted(updates.keys())}
+
+    # ---------- ruoli a tendina e ticket ----------
+    def cog_or_503(name: str):
+        cog = bot.get_cog(name)
+        if cog is None:
+            raise HTTPException(status_code=503, detail="Questo modulo non è attivo sul bot")
+        return cog
+
+    def postable_channel(guild, raw: str):
+        channel = next((c for c in guild.text_channels if c.id == _as_id(raw, "channel_id")), None)
+        if channel is None:
+            raise HTTPException(status_code=422, detail="Canale non valido per questo server")
+        perms = channel.permissions_for(guild.me)
+        if not (perms.view_channel and perms.send_messages and perms.embed_links):
+            raise HTTPException(status_code=422, detail="Il bot non può scrivere con embed in quel canale")
+        return channel
+
+    def jump_url(guild_id, channel_id, message_id) -> Optional[str]:
+        if not (guild_id and channel_id and message_id):
+            return None
+        return f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
+
+    @app.get("/api/guilds/{guild_id}/role-menus")
+    async def list_role_menus(guild_id: int, session: Dict[str, Any] = user_dep):
+        guild = await auth.guild_access(session, guild_id)
+        menus = []
+        for doc in await bot.db.get_role_menus(guild.id):
+            channel = guild.get_channel(doc.get("channel_id") or 0)
+            roles = [guild.get_role(rid) for rid in doc.get("role_ids", [])]
+            menus.append(
+                {
+                    "menu_id": doc.get("menu_id"),
+                    "title": _clean_name(doc.get("title", "")),
+                    "exclusive": bool(doc.get("exclusive")),
+                    "channel": _clean_name(channel.name) if channel else None,
+                    "roles": [_clean_name(r.name) for r in roles if r],
+                    "created_at": doc.get("created_at"),
+                    "url": jump_url(guild.id, doc.get("channel_id"), doc.get("message_id")),
+                }
+            )
+        return {"guild": _guild_summary(guild), "menus": menus, "channels": _channels(guild)["text"], "roles": _roles(guild)}
+
+    @app.post("/api/guilds/{guild_id}/role-menus")
+    async def create_role_menu(guild_id: int, body: RoleMenuCreate, session: Dict[str, Any] = csrf_dep):
+        guild = await auth.guild_access(session, guild_id)
+        cog = cog_or_503("Roles")
+        channel = postable_channel(guild, body.channel_id)
+
+        role_list = []
+        seen = set()
+        top = guild.me.top_role if guild.me else None
+        for raw in body.role_ids:
+            role_id = _as_id(raw, "role_ids")
+            if role_id in seen:
+                continue
+            seen.add(role_id)
+            role = guild.get_role(role_id)
+            if role is None or role.is_default() or role.managed:
+                raise HTTPException(status_code=422, detail="Ruolo non valido per questo server")
+            if top is None or not role < top:
+                raise HTTPException(status_code=422, detail=f"Il ruolo del bot deve stare sopra a «{_clean_name(role.name)}»")
+            role_list.append({"role": role, "emoji": role.unicode_emoji or "🎭", "label": role.name[:100]})
+
+        try:
+            doc = await cog.post_menu(
+                channel, body.title.strip(), (body.description or "").strip() or None,
+                role_list, body.exclusive, int(session["user"]["id"]),
+            )
+        except Exception as exc:
+            logger.warning("Dashboard: pubblicazione menu ruoli fallita: %s", exc)
+            raise HTTPException(status_code=502, detail="Discord ha rifiutato il messaggio")
+        logger.info("Dashboard: utente %s ha creato un menu ruoli nel server %s", session["user"]["id"], guild.id)
+        return {"ok": True, "menu_id": doc["menu_id"], "url": doc.get("jump_url")}
+
+    @app.delete("/api/guilds/{guild_id}/role-menus/{menu_id}")
+    async def delete_role_menu(guild_id: int, menu_id: str, session: Dict[str, Any] = csrf_dep):
+        guild = await auth.guild_access(session, guild_id)
+        if not MENU_ID_RE.match(menu_id):
+            raise HTTPException(status_code=404, detail="Menu non trovato")
+        doc = next((d for d in await bot.db.get_role_menus(guild.id) if d.get("menu_id") == menu_id), None)
+        if doc is None:
+            raise HTTPException(status_code=404, detail="Menu non trovato")
+        channel = guild.get_channel(doc.get("channel_id") or 0)
+        if channel is not None:
+            try:
+                await channel.get_partial_message(doc["message_id"]).delete()
+            except Exception:
+                pass  # messaggio già eliminato o permessi mancanti: il menu esce comunque dall'elenco
+        await bot.db.delete_role_menu(guild.id, menu_id)
+        logger.info("Dashboard: utente %s ha eliminato il menu ruoli %s (server %s)", session["user"]["id"], menu_id, guild.id)
+        return {"ok": True}
+
+    @app.get("/api/guilds/{guild_id}/tickets")
+    async def list_tickets(guild_id: int, session: Dict[str, Any] = user_dep):
+        guild = await auth.guild_access(session, guild_id)
+        doc = await bot.db.get_guild(guild.id) or {}
+        tickets = []
+        for row in await bot.db.list_tickets(guild.id, 50):
+            channel = guild.get_channel(row.get("channel_id") or 0)
+            member = guild.get_member(row.get("user_id") or 0)
+            tickets.append(
+                {
+                    "channel_id": str(row.get("channel_id")),
+                    "channel": _clean_name(channel.name) if channel else None,
+                    "user": _clean_name(member.display_name) if member else None,
+                    "status": "closed" if row.get("status") == "closed" else "open",
+                    "created_at": row.get("created_at"),
+                    "closed_at": row.get("closed_at"),
+                    "reason": str(row.get("close_reason") or "")[:200] or None,
+                    "url": f"https://discord.com/channels/{guild.id}/{channel.id}" if channel else None,
+                }
+            )
+        category = guild.get_channel(doc.get("ticket_category") or 0)
+        return {
+            "guild": _guild_summary(guild),
+            "tickets": tickets,
+            "configured": bool(category),
+            "channels": _channels(guild)["text"],
+        }
+
+    @app.post("/api/guilds/{guild_id}/tickets/panel")
+    async def send_ticket_panel(guild_id: int, body: PanelCreate, session: Dict[str, Any] = csrf_dep):
+        guild = await auth.guild_access(session, guild_id)
+        cog = cog_or_503("Tickets")
+        channel = postable_channel(guild, body.channel_id)
+        try:
+            message = await cog.send_panel(channel)
+        except Exception as exc:
+            logger.warning("Dashboard: pannello ticket non inviato: %s", exc)
+            raise HTTPException(status_code=502, detail="Discord ha rifiutato il messaggio")
+        logger.info("Dashboard: utente %s ha pubblicato il pannello ticket nel server %s", session["user"]["id"], guild.id)
+        return {"ok": True, "url": jump_url(guild.id, channel.id, message.id)}
+
+    @app.post("/api/guilds/{guild_id}/tickets/{channel_id}/close")
+    async def close_ticket(guild_id: int, channel_id: int, body: TicketClose, session: Dict[str, Any] = csrf_dep):
+        guild = await auth.guild_access(session, guild_id)
+        # Solo canali registrati come ticket aperti di QUESTO server: mai un canale qualsiasi
+        row = await bot.db.get_open_ticket_by_channel(guild.id, channel_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Ticket aperto non trovato")
+        user = session["user"]
+        reason = (body.reason or "").strip() or "Closed from the dashboard"
+        channel = guild.get_channel(channel_id)
+        if channel is None:
+            await bot.db.close_ticket_by_channel(channel_id, int(user["id"]), reason)
+            return {"ok": True, "channel_deleted": True}
+
+        cog = cog_or_503("Tickets")
+
+        async def run():
+            try:
+                await cog.close_ticket_channel(channel, f"{user['name']} (dashboard)", int(user["id"]), reason)
+            except Exception as exc:
+                logger.error("Dashboard: chiusura ticket %s fallita: %s", channel_id, exc)
+
+        task = asyncio.create_task(run())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+        logger.info("Dashboard: utente %s chiude il ticket %s (server %s)", user["id"], channel_id, guild.id)
+        return {"ok": True}
 
     # ---------- admin panel (solo proprietario) ----------
     @app.get("/api/admin/overview")

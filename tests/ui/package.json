@@ -1,0 +1,6 @@
+{
+  "name": "logiq-dashboard-ui-tests",
+  "private": true,
+  "description": "Test dell'interfaccia della dashboard (facoltativi: richiedono Node.js). Esegui `npm install` in questa cartella.",
+  "devDependencies": { "jsdom": "^24.0.0" }
+}

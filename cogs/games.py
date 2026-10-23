@@ -339,7 +339,9 @@ class Games(commands.Cog):
             user_data = await self.db.create_user(target.id, interaction.guild.id)
 
         balance = user_data.get('balance', 0)
-        embed = EmbedFactory.economy_balance(target, balance, "💎")
+        economy = self.bot.get_cog('Economy')
+        symbol = (await economy.currency(interaction.guild.id))[0] if economy else "💎"
+        embed = EmbedFactory.economy_balance(target, balance, symbol)
 
         await interaction.response.send_message(embed=embed)
 

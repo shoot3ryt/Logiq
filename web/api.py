@@ -78,6 +78,19 @@ def create_app(bot, auth_transport=None) -> FastAPI:
     auth = WebAuth(bot, transport=auth_transport)
     owner_only = Depends(auth.require_owner)
 
+    @app.on_event("startup")
+    async def restore_sessions():
+        backend = getattr(bot, "db", None)
+        if auth.sessions._backend is None:
+            return
+        try:
+            await backend.ensure_web_indexes()
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Indice sessioni non creato: %s", exc)
+        count = await auth.sessions.load()
+        if count:
+            logging.getLogger(__name__).info("Ripristinate %d sessioni della dashboard", count)
+
     # CORS middleware
     cors_origins = bot.config.get('web', {}).get('cors_origins', ['http://localhost:3000'])
     app.add_middleware(
