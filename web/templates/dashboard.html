@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — Logiq</title>
+<meta name="robots" content="noindex">
+<style>
+  :root {
+    --bg: #0b0d17; --bg-2: #11142a; --card: #151937; --line: #232850;
+    --text: #eef0ff; --muted: #9aa0c7; --accent: #6c7bff; --accent-2: #b06cff;
+    --good: #3ddc97; --bad: #ff6b81; --warn: #ffc857;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
+  body {
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .wrap { width: min(1040px, 100% - 32px); margin-inline: auto; }
+
+  /* Barra superiore */
+  header.top { position: sticky; top: 0; z-index: 20; background: rgba(11,13,23,.85); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .top-in { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 62px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: -.02em; }
+  .logo { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-weight: 900; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+  .top-right { display: flex; align-items: center; gap: 10px; }
+  .chip { display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 5px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-size: 14px; max-width: 200px; }
+  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--line); object-fit: cover; flex: none; }
+
+  /* Bottoni */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; border-radius: 11px; font-weight: 700; font-size: 14px; border: 1px solid transparent; cursor: pointer; transition: transform .15s, background .15s, opacity .15s; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:focus-visible, .tab:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; }
+  .btn-ghost { background: transparent; border-color: var(--line); }
+  .btn-ghost:hover { background: var(--card); }
+  .btn-danger { background: transparent; border-color: rgba(255,107,129,.5); color: var(--bad); }
+  .btn-danger:hover { background: rgba(255,107,129,.12); }
+  .btn[disabled] { opacity: .5; pointer-events: none; }
+  .btn-sm { padding: 7px 13px; font-size: 13px; border-radius: 9px; }
+
+  main { padding: 34px 0 80px; }
+  h1 { font-size: 28px; letter-spacing: -.025em; }
+  h2 { font-size: 18px; margin-bottom: 14px; }
+  .sub { color: var(--muted); margin-top: 4px; }
+  .head-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+
+  /* Login */
+  .login { max-width: 440px; margin: 9vh auto 0; text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 40px 28px; }
+  .login .logo { width: 54px; height: 54px; border-radius: 16px; font-size: 26px; margin: 0 auto 18px; }
+  .login p { color: var(--muted); margin: 10px 0 24px; }
+  .notice { margin-bottom: 18px; padding: 11px 14px; border-radius: 11px; font-size: 14px; text-align: left; background: rgba(255,107,129,.12); border: 1px solid rgba(255,107,129,.4); color: #ffc0ca; }
+  .btn-discord { background: #5865f2; color: #fff; width: 100%; padding: 13px; font-size: 15px; }
+
+  /* Server */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .srv { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .srv-top { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .srv-icon { width: 52px; height: 52px; border-radius: 16px; background: var(--line); display: grid; place-items: center; font-weight: 800; font-size: 20px; flex: none; object-fit: cover; }
+  .srv-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .srv-state { font-size: 13px; color: var(--muted); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
+  .dot.on { background: var(--good); }
+
+  /* Schede */
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 26px; overflow-x: auto; }
+  .tab { padding: 11px 16px; border: 0; background: none; color: var(--muted); font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .tab:hover { color: var(--text); }
+  .tab[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
+
+  /* Statistiche */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
+  .stat b { display: block; font-size: 28px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin-bottom: 22px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  svg.chart text { fill: var(--muted); font-size: 11px; }
+  svg.chart line { stroke: var(--line); }
+  .b-msg { fill: var(--accent); } .b-join { fill: var(--good); } .b-leave { fill: var(--bad); }
+  .i-msg { background: var(--accent); } .i-join { background: var(--good); } .i-leave { background: var(--bad); }
+  .empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; padding: 0 10px 10px; }
+  td { padding: 10px; border-top: 1px solid var(--line); vertical-align: middle; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tablewrap { overflow-x: auto; }
+
+  /* Form */
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  select, input[type="number"], textarea {
+    width: 100%; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  }
+  select:hover, input:hover, textarea:hover { border-color: #343a75; }
+  textarea { min-height: 110px; resize: vertical; }
+  .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+
+  /* Moduli */
+  .mods { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .mod { display: flex; align-items: center; justify-content: space-between; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; }
+  .mod.locked { opacity: .6; }
+  .mod b { display: block; }
+  .mod small { color: var(--muted); font-size: 13px; }
+  .switch { position: relative; width: 46px; height: 26px; flex: none; }
+  .switch input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; z-index: 1; }
+  .switch .track { position: absolute; inset: 0; border-radius: 999px; background: var(--line); transition: background .15s; }
+  .switch .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch input:checked + .track { background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+  .switch input:checked + .track::after { transform: translateX(20px); }
+  .switch input:disabled { cursor: not-allowed; }
+
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { padding: 5px 12px; border-radius: 999px; font-size: 13px; background: var(--bg-2); border: 1px solid var(--line); color: var(--muted); }
+  .pill.on { color: var(--good); border-color: rgba(61,220,151,.4); }
+
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 50; padding: 12px 20px; border-radius: 12px; font-weight: 600; font-size: 14px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 10px 40px rgba(0,0,0,.45); max-width: calc(100% - 32px); }
+  .toast.ok { border-color: rgba(61,220,151,.6); } .toast.err { border-color: rgba(255,107,129,.7); }
+  .loading { color: var(--muted); padding: 40px 0; text-align: center; }
+  .back { color: var(--muted); font-size: 14px; display: inline-block; margin-bottom: 14px; }
+  .back:hover { color: var(--text); }
+  @media (max-width: 560px) { .chip span { display: none; } .chip { padding: 5px; } main { padding-top: 22px; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-in">
+    <a href="/" class="brand"><span class="logo">L</span><span>Logiq</span></a>
+    <div class="top-right" id="topRight" hidden></div>
+  </div>
+</header>
+
+<main class="wrap" id="app"><div class="loading">Caricamento…</div></main>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<noscript><p style="padding:24px">La dashboard richiede JavaScript.</p></noscript>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- utilità ----------
+  var $app = document.getElementById('app');
+  var $top = document.getElementById('topRight');
+  var $toast = document.getElementById('toast');
+  var state = { me: null, csrf: null, guildCache: {} };
+  var CDN = 'https://cdn.discordapp.com/';
+  var fmt = new Intl.NumberFormat('it-IT');
+
+  var MODULES = {
+    moderation: ['Moderazione', 'Ban, kick, timeout, avvisi e anti-spam'],
+    leveling: ['Livelli e XP', 'XP per messaggi e classifica'],
+    economy: ['Economia', 'Valuta virtuale, ricompensa giornaliera e negozio'],
+    verification: ['Verifica', 'Benvenuto e verifica dei nuovi membri'],
+    roles: ['Ruoli', 'Ruoli autoassegnabili e reaction roles'],
+    tickets: ['Ticket', 'Supporto con canali privati'],
+    temp_voice: ['Vocali temporanee', 'Canali vocali creati al volo'],
+    music: ['Musica', 'Riproduzione nei canali vocali'],
+    games: ['Giochi', 'Minigiochi e scommesse'],
+    giveaways: ['Giveaway', 'Sorteggi con scadenza'],
+    analytics: ['Statistiche', 'Raccolta di messaggi, ingressi e uscite'],
+    social_alerts: ['Avvisi social', 'Notifiche dalle piattaforme social'],
+    ai_chat: ['Chat AI', 'Domande e riassunti con intelligenza artificiale']
+  };
+
+  var LOGIN_ERRORS = {
+    denied: 'Accesso annullato.',
+    invalid_state: 'La sessione di accesso è scaduta: riprova.',
+    login_failed: 'Accesso non riuscito: riprova tra qualche istante.',
+    not_configured: 'Il login non è ancora configurato dal proprietario del bot.'
+  };
+
+  function h(tag, props) {
+    var el = document.createElement(tag);
+    props = props || {};
+    Object.keys(props).forEach(function (k) {
+      var v = props[k];
+      if (v === null || v === undefined || v === false) return;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k.slice(0, 2) === 'on' && typeof v === 'function') el.addEventListener(k.slice(2), v);
+      else if (k === 'value') el.value = v;
+      else if (v === true) el.setAttribute(k, '');
+      else el.setAttribute(k, v);
+    });
+    for (var i = 2; i < arguments.length; i++) append(el, arguments[i]);
+    return el;
+  }
+  function append(el, child) {
+    if (child === null || child === undefined || child === false) return;
+    if (Array.isArray(child)) { child.forEach(function (c) { append(el, c); }); return; }
+    el.appendChild(typeof child === 'string' || typeof child === 'number' ? document.createTextNode(String(child)) : child);
+  }
+  function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+  function mount(node) { clear($app); append($app, node); window.scrollTo(0, 0); }
+
+  function safeImg(url, cls, alt) {
+    if (typeof url !== 'string' || url.indexOf(CDN) !== 0) return null;
+    return h('img', { src: url, class: cls, alt: alt || '', loading: 'lazy', referrerpolicy: 'no-referrer' });
+  }
+  function safeLink(url) {
+    return typeof url === 'string' && url.indexOf('https://discord.com/oauth2/authorize?') === 0 ? url : null;
+  }
+  function initial(name) { return (name || '?').trim().charAt(0).toUpperCase() || '?'; }
+
+  var toastTimer;
+  function toast(msg, ok) {
+    $toast.textContent = msg;
+    $toast.className = 'toast ' + (ok ? 'ok' : 'err');
+    $toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { $toast.hidden = true; }, 3800);
+  }
+
+  function ApiError(status, message) { this.status = status; this.message = message; }
+
+  function api(path, opts) {
+    opts = opts || {};
+    var method = opts.method || 'GET';
+    var headers = { 'Accept': 'application/json' };
+    var init = { method: method, headers: headers, credentials: 'same-origin' };
+    if (opts.body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.body); }
+    if (method !== 'GET' && state.csrf) headers['X-CSRF-Token'] = state.csrf;
+    return fetch(path, init).then(function (res) {
+      return res.text().then(function (text) {
+        var data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
+        if (res.status === 401) { state.me = null; state.csrf = null; renderLogin(); throw new ApiError(401, 'Non autenticato'); }
+        if (!res.ok) {
+          var detail = data && data.detail;
+          if (Array.isArray(detail)) detail = detail.map(function (d) { return d.msg; }).join('; ');
+          throw new ApiError(res.status, typeof detail === 'string' ? detail : 'Errore ' + res.status);
+        }
+        return data;
+      });
+    });
+  }
+  function fail(err) {
+    if (err && err.status === 401) return;
+    toast(err && err.message ? err.message : 'Errore di rete', false);
+  }
+
+  // ---------- barra superiore ----------
+  function renderTop() {
+    clear($top);
+    if (!state.me) { $top.hidden = true; return; }
+    $top.hidden = false;
+    if (state.me.is_owner) append($top, h('a', { href: '#/admin', class: 'btn btn-ghost btn-sm' }, 'Admin'));
+    append($top, h('div', { class: 'chip' },
+      safeImg(state.me.user.avatar_url, 'avatar', '') || h('span', { class: 'avatar' }),
+      h('span', { text: state.me.user.name })));
+    append($top, h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: logout }, 'Esci'));
+  }
+
+  function logout() {
+    api('/auth/logout', { method: 'POST' }).then(function () {
+      state.me = null; state.csrf = null; location.hash = ''; renderLogin();
+    }).catch(fail);
+  }
+
+  // ---------- login ----------
+  function renderLogin() {
+    renderTop();
+    var params = new URLSearchParams(location.search);
+    var err = params.get('error');
+    if (err) history.replaceState(null, '', location.pathname + location.hash);
+    mount(h('div', { class: 'login' },
+      h('div', { class: 'logo' }, 'L'),
+      h('h1', {}, 'Dashboard'),
+      h('p', {}, 'Accedi con Discord per gestire i server in cui hai i permessi.'),
+      err ? h('div', { class: 'notice', role: 'alert', text: LOGIN_ERRORS[err] || 'Si è verificato un errore.' }) : null,
+      h('a', { href: '/auth/login', class: 'btn btn-discord' }, 'Accedi con Discord')));
+  }
+
+  // ---------- elenco server ----------
+  function renderServers() {
+    var guilds = state.me.guilds;
+    var body = guilds.length
+      ? h('div', { class: 'grid' }, guilds.map(function (g) {
+          var invite = safeLink(g.invite_url);
+          return h('div', { class: 'srv' },
+            h('div', { class: 'srv-top' },
+              safeImg(g.icon_url, 'srv-icon', '') || h('div', { class: 'srv-icon', text: initial(g.name) }),
+              h('div', { style: 'min-width:0' },
+                h('div', { class: 'srv-name', text: g.name }),
+                h('div', { class: 'srv-state' }, h('span', { class: 'dot' + (g.bot_present ? ' on' : '') }), g.bot_present ? 'Logiq è nel server' : 'Logiq non è nel server'))),
+            g.bot_present
+              ? h('a', { href: '#/g/' + g.id, class: 'btn btn-primary' }, 'Gestisci')
+              : (invite ? h('a', { href: invite, target: '_blank', rel: 'noopener noreferrer', class: 'btn btn-ghost' }, 'Aggiungi il bot') : null));
+        }))
+      : h('div', { class: 'panel' }, h('div', { class: 'empty' }, 'Non hai server da gestire. Servono i permessi "Gestisci server" o "Amministratore".'));
+
+    mount(h('div', {},
+      h('div', { class: 'head-row' }, h('div', {}, h('h1', {}, 'I tuoi server'), h('p', { class: 'sub' }, 'Scegli un server da configurare.'))),
+      body));
+  }
+
+  // ---------- server: struttura e schede ----------
+  var TABS = [['overview', 'Panoramica'], ['settings', 'Impostazioni'], ['modules', 'Moduli']];
+
+  function guildFrame(id, tab, name, iconUrl, content) {
+    return h('div', {},
+      h('a', { href: '#/', class: 'back' }, '← Tutti i server'),
+      h('div', { class: 'head-row' },
+        h('div', { class: 'srv-top' },
+          safeImg(iconUrl, 'srv-icon', '') || h('div', { class: 'srv-icon', text: initial(name) }),
+          h('div', {}, h('h1', { text: name })))),
+      h('nav', { class: 'tabs', 'aria-label': 'Sezioni del server' }, TABS.map(function (t) {
+        return h('a', { href: '#/g/' + id + (t[0] === 'overview' ? '' : '/' + t[0]), class: 'tab', 'aria-current': t[0] === tab ? 'page' : null }, t[1]);
+      })),
+      content);
+  }
+
+  function renderGuild(id, tab) {
+    mount(h('div', { class: 'loading' }, 'Caricamento…'));
+    var path = '/api/guilds/' + id + (tab === 'overview' ? '/overview' : '/settings');
+    api(path).then(function (data) {
+      if (tab === 'overview') renderOverview(id, data);
+      else if (tab === 'settings') renderSettings(id, data);
+      else renderModules(id, data);
+    }).catch(function (err) {
+      if (err && err.status === 401) return;
+      mount(h('div', { class: 'panel' }, h('div', { class: 'empty', text: err && err.status === 404 ? 'Server non trovato o senza permessi.' : (err.message || 'Errore') }),
+        h('div', { class: 'actions' }, h('a', { href: '#/', class: 'btn btn-ghost' }, 'Torna ai server'))));
+    });
+  }
+
+  // ---------- panoramica ----------
+  function statCard(value, label) { return h('div', { class: 'stat' }, h('b', { text: typeof value === 'number' ? fmt.format(value) : value }), h('span', { text: label })); }
+
+  function dayLabels(startDay, n) {
+    var out = [];
+    for (var i = 0; i < n; i++) {
+      out.push(new Date((startDay + i) * 86400000).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }));
+    }
+    return out;
+  }
+
+  function chart(activity) {
+    var NS = 'http://www.w3.org/2000/svg';
+    var n = activity.messages.length;
+    var series = [['b-msg', activity.messages], ['b-join', activity.joins], ['b-leave', activity.leaves]];
+    var max = 1;
+    series.forEach(function (s) { s[1].forEach(function (v) { if (v > max) max = v; }); });
+    var W = 640, H = 230, L = 34, B = 26, T = 10, plotH = H - B - T, plotW = W - L - 6;
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('class', 'chart');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'Messaggi, ingressi e uscite negli ultimi giorni');
+    function el(name, attrs, text) {
+      var e = document.createElementNS(NS, name);
+      Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+      if (text !== undefined) e.textContent = text;
+      svg.appendChild(e);
+      return e;
+    }
+    [0, 0.5, 1].forEach(function (f) {
+      var y = T + plotH - plotH * f;
+      el('line', { x1: L, x2: W - 6, y1: y, y2: y });
+      el('text', { x: L - 6, y: y + 4, 'text-anchor': 'end' }, String(Math.round(max * f)));
+    });
+    var labels = dayLabels(activity.start_day, n);
+    var slot = plotW / n, barW = Math.max(3, Math.min(14, slot / 4));
+    for (var i = 0; i < n; i++) {
+      var cx = L + slot * i + slot / 2;
+      series.forEach(function (s, k) {
+        var v = s[1][i], bh = plotH * v / max;
+        var r = el('rect', { 'class': s[0], x: cx + (k - 1) * (barW + 1) - barW / 2, y: T + plotH - bh, width: barW, height: Math.max(bh, v ? 1 : 0), rx: 2 });
+        var t = document.createElementNS(NS, 'title'); t.textContent = labels[i] + ': ' + v; r.appendChild(t);
+      });
+      if (n <= 10 || i % Math.ceil(n / 10) === 0) el('text', { x: cx, y: H - 8, 'text-anchor': 'middle' }, labels[i]);
+    }
+    return svg;
+  }
+
+  function renderOverview(id, d) {
+    var a = d.activity;
+    var hasActivity = [a.messages, a.joins, a.leaves].some(function (arr) { return arr.some(function (v) { return v > 0; }); });
+    var board = d.leaderboard.length
+      ? h('div', { class: 'tablewrap' }, h('table', {},
+          h('thead', {}, h('tr', {}, h('th', {}, '#'), h('th', {}, 'Utente'), h('th', { class: 'num' }, 'Livello'), h('th', { class: 'num' }, 'XP'))),
+          h('tbody', {}, d.leaderboard.map(function (r) {
+            return h('tr', {},
+              h('td', { text: String(r.rank) }),
+              h('td', {}, h('div', { class: 'who' }, safeImg(r.avatar_url, 'avatar', '') || h('span', { class: 'avatar' }), h('span', { text: r.name }))),
+              h('td', { class: 'num', text: fmt.format(r.level) }),
+              h('td', { class: 'num', text: fmt.format(r.xp) }));
+          }))))
+      : h('div', { class: 'empty' }, 'Ancora nessun dato: la classifica si riempie quando i membri scrivono (modulo Livelli).');
+
+    mount(guildFrame(id, 'overview', d.guild.name, d.guild.icon_url, h('div', {},
+      h('div', { class: 'stats' },
+        statCard(d.stats.members, 'Membri'), statCard(d.stats.channels, 'Canali'),
+        statCard(d.stats.roles, 'Ruoli'), statCard(d.stats.boosts, 'Boost')),
+      h('div', { class: 'panel' },
+        h('h2', {}, 'Attività'),
+        h('div', { class: 'legend' },
+          h('span', {}, h('i', { class: 'i-msg' }), 'Messaggi'), h('span', {}, h('i', { class: 'i-join' }), 'Ingressi'), h('span', {}, h('i', { class: 'i-leave' }), 'Uscite')),
+        hasActivity ? chart(a) : h('div', { class: 'empty' }, 'Nessuna attività registrata nel periodo. Serve il modulo Statistiche attivo.')),
+      h('div', { class: 'panel' }, h('h2', {}, 'Classifica XP'), board))));
+  }
+
+  // ---------- impostazioni ----------
+  function selectField(label, key, options, current, hint, fieldsRef) {
+    var sel = h('select', { id: 'f-' + key, name: key }, h('option', { value: '' }, '— Nessuno —'));
+    var found = !current;
+    options.forEach(function (o) {
+      if (o.id === current) found = true;
+      sel.appendChild(h('option', { value: o.id, text: o.name + (o.assignable === false ? '  (sopra il ruolo del bot)' : '') }));
+    });
+    if (!found) sel.appendChild(h('option', { value: current, text: 'Elemento eliminato (…' + current.slice(-4) + ')' }));
+    sel.value = current || '';
+    fieldsRef[key] = function () { return sel.value || null; };
+    return h('div', { class: 'field' }, h('label', { for: 'f-' + key }, label), sel, hint ? h('div', { class: 'hint', text: hint }) : null);
+  }
+
+  function numberField(label, key, value, def, min, max, fieldsRef) {
+    var input = h('input', { type: 'number', id: 'f-' + key, name: key, min: min, max: max, placeholder: String(def) });
+    if (value !== null && value !== undefined) input.value = String(value);
+    fieldsRef[key] = function () {
+      if (input.value.trim() === '') return null;
+      var n = parseInt(input.value, 10);
+      return isNaN(n) ? null : n;
+    };
+    return h('div', { class: 'field' }, h('label', { for: 'f-' + key }, label), input,
+      h('div', { class: 'hint', text: 'Vuoto = valore predefinito (' + fmt.format(def) + ')' }));
+  }
+
+  function renderSettings(id, d) {
+    var f = {}, v = d.values, ch = d.channels;
+    var typeSel = h('select', { id: 'f-verification_type' },
+      h('option', { value: 'button' }, 'Pulsante'), h('option', { value: 'captcha' }, 'Codice (captcha)'));
+    typeSel.value = v.verification_type;
+    f.verification_type = function () { return typeSel.value; };
+    var methodSel = h('select', { id: 'f-verification_method' },
+      h('option', { value: 'dm' }, 'Messaggio privato'), h('option', { value: 'channel' }, 'Canale del server'));
+    methodSel.value = v.verification_method;
+    f.verification_method = function () { return methodSel.value; };
+    var msg = h('textarea', { id: 'f-welcome_message', maxlength: '1000', placeholder: 'Lascia vuoto per il messaggio predefinito' });
+    msg.value = v.welcome_message || '';
+    f.welcome_message = function () { return msg.value.trim() ? msg.value : null; };
+    var counter = h('div', { class: 'hint' });
+    function count() { counter.textContent = 'Segnaposto: {user} menzione, {username} nome, {server} nome del server · ' + msg.value.length + '/1000'; }
+    msg.addEventListener('input', count); count();
+
+    var saveBtn = h('button', { class: 'btn btn-primary', type: 'button' }, 'Salva impostazioni');
+    saveBtn.addEventListener('click', function () {
+      var payload = {};
+      Object.keys(f).forEach(function (k) { payload[k] = f[k](); });
+      saveBtn.disabled = true;
+      api('/api/guilds/' + id + '/settings', { method: 'PUT', body: payload })
+        .then(function () { toast('Impostazioni salvate', true); })
+        .catch(fail)
+        .then(function () { saveBtn.disabled = false; });
+    });
+
+    mount(guildFrame(id, 'settings', d.guild.name, d.guild.icon_url, h('div', {},
+      h('div', { class: 'panel' }, h('h2', {}, 'Canali'), h('div', { class: 'form-grid' },
+        selectField('Canale dei log', 'log_channel', ch.text, v.log_channel, 'Azioni di moderazione e registri.', f),
+        selectField('Canale di benvenuto', 'welcome_channel', ch.text, v.welcome_channel, null, f),
+        selectField('Canale di verifica', 'verify_channel', ch.text, v.verify_channel, 'Usato se il metodo è "Canale del server".', f),
+        selectField('Canale log ticket', 'ticket_log_channel', ch.text, v.ticket_log_channel, null, f),
+        selectField('Categoria dei ticket', 'ticket_category', ch.category, v.ticket_category, 'Dove vengono creati i canali dei ticket.', f),
+        selectField('Canale vocale "crea stanza"', 'temp_voice_creator', ch.voice, v.temp_voice_creator, 'Entrando qui si crea una stanza vocale temporanea.', f))),
+      h('div', { class: 'panel' }, h('h2', {}, 'Ruoli'), h('div', { class: 'form-grid' },
+        selectField('Ruolo dei membri verificati', 'verified_role', d.roles, v.verified_role, 'Il ruolo del bot deve stare sopra a questo ruolo.', f),
+        selectField('Ruolo staff (ticket)', 'support_role', d.roles, v.support_role, 'Vede e gestisce i ticket.', f))),
+      h('div', { class: 'panel' }, h('h2', {}, 'Verifica e benvenuto'),
+        h('div', { class: 'form-grid' },
+          h('div', { class: 'field' }, h('label', { for: 'f-verification_type' }, 'Tipo di verifica'), typeSel),
+          h('div', { class: 'field' }, h('label', { for: 'f-verification_method' }, 'Dove avviene'), methodSel)),
+        h('div', { class: 'field', style: 'margin-top:18px' }, h('label', { for: 'f-welcome_message' }, 'Messaggio di benvenuto'), msg, counter)),
+      h('div', { class: 'panel' }, h('h2', {}, 'Livelli ed economia'), h('div', { class: 'form-grid' },
+        numberField('XP per messaggio', 'xp_per_message', v.xp_per_message, d.defaults.xp_per_message, 1, 1000, f),
+        numberField('Attesa tra gli XP (secondi)', 'xp_cooldown', v.xp_cooldown, d.defaults.xp_cooldown, 0, 3600, f),
+        numberField('Ricompensa giornaliera', 'daily_reward', v.daily_reward, d.defaults.daily_reward, 0, 1000000, f))),
+      h('div', { class: 'actions' }, saveBtn))));
+  }
+
+  // ---------- moduli ----------
+  function renderModules(id, d) {
+    var boxes = {};
+    var list = h('div', { class: 'mods' }, d.modules.map(function (m) {
+      var info = MODULES[m.key] || [m.key, ''];
+      var input = h('input', { type: 'checkbox', id: 'm-' + m.key, 'aria-label': info[0], disabled: m.locked });
+      input.checked = m.enabled;
+      boxes[m.key] = { input: input, locked: m.locked };
+      return h('div', { class: 'mod' + (m.locked ? ' locked' : '') },
+        h('div', {}, h('b', { text: info[0] }), h('small', { text: m.locked ? 'Disattivato dal proprietario del bot' : info[1] })),
+        h('label', { class: 'switch' }, input, h('span', { class: 'track' })));
+    }));
+    var saveBtn = h('button', { class: 'btn btn-primary', type: 'button' }, 'Salva moduli');
+    saveBtn.addEventListener('click', function () {
+      var payload = {};
+      Object.keys(boxes).forEach(function (k) { if (!boxes[k].locked) payload[k] = boxes[k].input.checked; });
+      saveBtn.disabled = true;
+      api('/api/guilds/' + id + '/settings', { method: 'PUT', body: { modules: payload } })
+        .then(function () { toast('Moduli salvati', true); })
+        .catch(fail)
+        .then(function () { saveBtn.disabled = false; });
+    });
+    mount(guildFrame(id, 'modules', d.guild.name, d.guild.icon_url, h('div', {},
+      h('p', { class: 'sub', style: 'margin-bottom:18px' }, 'Spegni i moduli che non ti servono: i loro comandi e le funzioni automatiche si fermano in questo server.'),
+      list, h('div', { class: 'actions', style: 'margin-top:22px' }, saveBtn))));
+  }
+
+  // ---------- admin ----------
+  function uptimeText(s) {
+    var d = Math.floor(s / 86400), hh = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+    return (d ? d + 'g ' : '') + (d || hh ? hh + 'h ' : '') + m + 'm';
+  }
+
+  function renderAdmin() {
+    if (!state.me.is_owner) { location.hash = '#/'; return; }
+    mount(h('div', { class: 'loading' }, 'Caricamento…'));
+    api('/api/admin/overview').then(function (d) {
+      var b = d.bot;
+      var rows = d.guilds.map(function (g) {
+        var btn = h('button', { class: 'btn btn-danger btn-sm', type: 'button' }, 'Esci dal server');
+        btn.addEventListener('click', function () {
+          if (!window.confirm('Far uscire il bot da "' + g.name + '"? Le impostazioni salvate restano nel database.')) return;
+          btn.disabled = true;
+          api('/api/admin/guilds/' + g.id + '/leave', { method: 'POST' })
+            .then(function () { toast('Il bot è uscito da ' + g.name, true); renderAdmin(); })
+            .catch(function (e) { btn.disabled = false; fail(e); });
+        });
+        return h('tr', {},
+          h('td', {}, h('div', { class: 'who' }, safeImg(g.icon_url, 'avatar', '') || h('span', { class: 'avatar' }), h('span', { text: g.name }))),
+          h('td', { class: 'num', text: fmt.format(g.members) }),
+          h('td', { text: g.joined_at ? new Date(g.joined_at).toLocaleDateString('it-IT') : '–' }),
+          h('td', { class: 'num' }, h('a', { class: 'btn btn-ghost btn-sm', href: '#/g/' + g.id }, 'Apri'), ' ', btn));
+      });
+      mount(h('div', {},
+        h('a', { href: '#/', class: 'back' }, '← Tutti i server'),
+        h('div', { class: 'head-row' }, h('div', {}, h('h1', {}, 'Admin'), h('p', { class: 'sub' }, 'Panoramica del bot (solo proprietario).'))),
+        h('div', { class: 'stats' },
+          statCard(b.guilds, 'Server'), statCard(b.users, 'Utenti'), statCard(b.commands, 'Comandi'),
+          statCard(b.latency_ms === null ? '–' : b.latency_ms + ' ms', 'Latenza'), statCard(uptimeText(b.uptime_seconds), 'Online da')),
+        h('div', { class: 'panel' }, h('h2', {}, 'Sistema'), h('div', { class: 'pills' },
+          h('span', { class: 'pill' + (b.ready ? ' on' : '') }, b.ready ? 'Bot online' : 'Bot in avvio'),
+          h('span', { class: 'pill' + (d.database.connected ? ' on' : '') }, d.database.connected ? 'Database connesso' : 'Database non connesso'),
+          h('span', { class: 'pill', text: 'Python ' + d.system.python }),
+          h('span', { class: 'pill', text: 'discord.py ' + d.system.discord_py }))),
+        h('div', { class: 'panel' }, h('h2', {}, 'Moduli globali'),
+          h('p', { class: 'sub', style: 'margin:-6px 0 12px' }, 'Impostati in config.yaml: se un modulo è spento qui, resta spento in tutti i server.'),
+          h('div', { class: 'pills' }, d.modules.map(function (m) {
+            return h('span', { class: 'pill' + (m.enabled ? ' on' : ''), text: (MODULES[m.key] ? MODULES[m.key][0] : m.key) + (m.enabled ? '' : ' (spento)') });
+          }))),
+        h('div', { class: 'panel' }, h('h2', {}, 'Server'),
+          rows.length
+            ? h('div', { class: 'tablewrap' }, h('table', {},
+                h('thead', {}, h('tr', {}, h('th', {}, 'Server'), h('th', { class: 'num' }, 'Membri'), h('th', {}, 'Dal'), h('th', {}))),
+                h('tbody', {}, rows)))
+            : h('div', { class: 'empty' }, 'Il bot non è in nessun server.'))));
+    }).catch(function (err) {
+      if (err && err.status === 401) return;
+      fail(err); location.hash = '#/';
+    });
+  }
+
+  // ---------- router ----------
+  function route() {
+    if (!state.me) return;
+    var parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+    if (parts[0] === 'admin') return renderAdmin();
+    if (parts[0] === 'g' && /^\d{5,25}$/.test(parts[1] || '')) {
+      var tab = parts[2] || 'overview';
+      if (['overview', 'settings', 'modules'].indexOf(tab) === -1) tab = 'overview';
+      return renderGuild(parts[1], tab);
+    }
+    renderServers();
+  }
+
+  window.addEventListener('hashchange', route);
+
+  function start() {
+    api('/api/me').then(function (me) {
+      state.me = me; state.csrf = me.csrf;
+      var params = new URLSearchParams(location.search);
+      if (params.get('error')) history.replaceState(null, '', location.pathname + location.hash);
+      renderTop();
+      route();
+    }).catch(function (err) {
+      if (!(err && err.status === 401)) {
+        mount(h('div', { class: 'panel' }, h('div', { class: 'empty', text: 'Impossibile contattare il server. Riprova tra poco.' })));
+      }
+    });
+  }
+  start();
+})();
+</script>
+</body>
+</html>

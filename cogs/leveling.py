@@ -33,7 +33,7 @@ class Leveling(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Award XP for messages"""
-        if not self.module_config.get('enabled', True):
+        if not message.guild or not await self.bot.module_enabled(message.guild.id, 'leveling'):
             return
 
         if message.author.bot or not message.guild:
@@ -44,7 +44,10 @@ class Leveling(commands.Cog):
         current_time = datetime.utcnow().timestamp()
 
         if user_key in self.xp_cooldown:
-            if current_time - self.xp_cooldown[user_key] < self.module_config.get('xp_cooldown', 60):
+            cooldown = await self.bot.guild_setting(
+                message.guild.id, 'xp_cooldown', self.module_config.get('xp_cooldown', 60)
+            )
+            if current_time - self.xp_cooldown[user_key] < cooldown:
                 return
 
         self.xp_cooldown[user_key] = current_time
@@ -55,7 +58,9 @@ class Leveling(commands.Cog):
             user_data = await self.db.create_user(message.author.id, message.guild.id)
 
         # Calculate XP
-        xp_gain = self.module_config.get('xp_per_message', 10)
+        xp_gain = await self.bot.guild_setting(
+            message.guild.id, 'xp_per_message', self.module_config.get('xp_per_message', 10)
+        )
         new_xp = user_data.get('xp', 0) + xp_gain
         current_level = user_data.get('level', 0)
 

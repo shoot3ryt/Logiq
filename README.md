@@ -386,6 +386,21 @@ web:
 
 ---
 
+## 🌐 Dashboard web
+
+Con `web.enabled: true` il bot espone sulla porta `web.port`:
+
+- `/` homepage pubblica con il pulsante per invitare il bot (`/invite`)
+- `/dashboard` login con Discord, gestione dei propri server (canali, ruoli, verifica, moduli, XP ed economia) e statistiche
+- `/admin` (cioè `/dashboard#/admin`) admin panel riservato al proprietario del bot
+
+Variabili d'ambiente (vedi `.env`): `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `PUBLIC_URL`, `SESSION_SECRET`
+e, opzionale, `OWNER_ID`. Nel portale Developer di Discord aggiungi sotto OAuth2 → Redirects
+`<PUBLIC_URL>/auth/callback`.
+
+Chi può gestire un server: chi ha il permesso "Gestisci server" o "Amministratore" (controllato in tempo
+reale). I moduli spenti in `config.yaml` restano spenti ovunque; ogni server può spegnere gli altri dalla dashboard.
+
 ## 🐛 Troubleshooting
 
 ### Bot Not Starting

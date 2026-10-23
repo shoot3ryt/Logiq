@@ -84,7 +84,7 @@ class Admin(commands.Cog):
 
         description = ""
         for module_name, module_config in modules.items():
-            enabled = module_config.get('enabled', True)
+            enabled = await self.bot.module_enabled(interaction.guild.id, module_name)
             status = "🟢 Enabled" if enabled else "🔴 Disabled"
             description += f"**{module_name.title()}**: {status}\n"
 

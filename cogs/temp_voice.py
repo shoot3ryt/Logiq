@@ -34,7 +34,7 @@ class TempVoice(commands.Cog):
         after: discord.VoiceState
     ):
         """Handle voice state updates for temp channels"""
-        if not self.module_config.get('enabled', True):
+        if not await self.bot.module_enabled(member.guild.id, 'temp_voice'):
             return
 
         guild_config = await self.db.get_guild(member.guild.id)

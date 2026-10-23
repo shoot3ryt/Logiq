@@ -16,12 +16,13 @@ from dotenv import load_dotenv
 from database.db_manager import DatabaseManager
 from utils.logger import BotLogger
 from utils.embeds import EmbedColor
+from utils.modules import GuildConfigMixin, LogiqTree
 
 # Load environment variables
 load_dotenv()
 
 
-class Logiq(commands.Bot):
+class Logiq(GuildConfigMixin, commands.Bot):
     """Custom bot class"""
 
     def __init__(self, config: dict):
@@ -36,8 +37,10 @@ class Logiq(commands.Bot):
         super().__init__(
             command_prefix=config['bot']['prefix'],
             intents=intents,
-            help_command=None
+            help_command=None,
+            tree_cls=LogiqTree
         )
+        self._init_guild_config()
 
         self.config = config
         self.start_time = discord.utils.utcnow()

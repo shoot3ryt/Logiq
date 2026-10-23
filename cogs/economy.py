@@ -57,7 +57,9 @@ class Economy(commands.Cog):
             )
             return
 
-        daily_amount = self.module_config.get('daily_reward', 100)
+        daily_amount = await self.bot.guild_setting(
+            interaction.guild.id, 'daily_reward', self.module_config.get('daily_reward', 100)
+        )
         await self.db.add_balance(interaction.user.id, interaction.guild.id, daily_amount)
         await self.db.update_user(interaction.user.id, interaction.guild.id, {'last_daily': current_time})
 

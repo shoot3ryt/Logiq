@@ -34,7 +34,7 @@ class Moderation(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Auto-moderation on messages"""
-        if not self.module_config.get('enabled', True):
+        if not message.guild or not await self.bot.module_enabled(message.guild.id, 'moderation'):
             return
 
         if message.author.bot or not message.guild:

@@ -130,7 +130,7 @@ class Verification(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         """Handle new member join - Send welcome message and verification"""
-        if not self.module_config.get('enabled', True):
+        if not await self.bot.module_enabled(member.guild.id, 'verification'):
             return
 
         guild_config = await self.db.get_guild(member.guild.id)

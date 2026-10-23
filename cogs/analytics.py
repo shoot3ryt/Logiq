@@ -29,7 +29,7 @@ class Analytics(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Track message events"""
-        if not self.module_config.get('enabled', True):
+        if not message.guild or not await self.bot.module_enabled(message.guild.id, 'analytics'):
             return
 
         if message.author.bot or not message.guild:
@@ -44,7 +44,7 @@ class Analytics(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         """Track member joins"""
-        if not self.module_config.get('enabled', True):
+        if not await self.bot.module_enabled(member.guild.id, 'analytics'):
             return
 
         await self.db.log_event('member_join', {
@@ -55,7 +55,7 @@ class Analytics(commands.Cog):
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
         """Track member leaves"""
-        if not self.module_config.get('enabled', True):
+        if not await self.bot.module_enabled(member.guild.id, 'analytics'):
             return
 
         await self.db.log_event('member_leave', {

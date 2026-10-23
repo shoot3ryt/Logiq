@@ -1,25 +1,34 @@
 """
 FastAPI Web Dashboard for Logiq
-REST API endpoints for bot statistics and management
+Homepage pubblica, login con Discord, pannello per server e admin panel del proprietario
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
-from typing import Optional
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlencode, quote
 import logging
 import os
 import time
+
+from . import dashboard
+from .auth import WebAuth
+from .common import INVITE_PERMISSIONS, invite_url  # noqa: F401  (INVITE_PERMISSIONS riesportato)
 
 logger = logging.getLogger(__name__)
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 
-# Permessi richiesti dall'invito: moderazione, ruoli, canali, messaggi, voce (musica / temp voice)
-INVITE_PERMISSIONS = 1099800374358
-INVITE_SCOPES = "bot applications.commands"
+# Le pagine sono servite da questo stesso dominio: niente risorse esterne tranne le immagini di Discord
+PAGE_CSP = (
+    "default-src 'self'; "
+    "img-src 'self' https://cdn.discordapp.com data:; "
+    "style-src 'self' 'unsafe-inline'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "connect-src 'self'; "
+    "base-uri 'none'; "
+    "frame-ancestors 'none'"
+)
 
 
 def _read_template(name: str, fallback: str) -> str:
@@ -30,6 +39,10 @@ def _read_template(name: str, fallback: str) -> str:
             return f.read()
     logger.warning("Template %s non trovato in %s", name, TEMPLATE_DIR)
     return fallback
+
+
+def _page(name: str, fallback: str) -> HTMLResponse:
+    return HTMLResponse(_read_template(name, fallback), headers={"Content-Security-Policy": PAGE_CSP})
 
 
 def _format_uptime(seconds: int) -> str:
@@ -46,32 +59,6 @@ def _format_uptime(seconds: int) -> str:
     return " ".join(parts)
 
 
-def _client_id(bot) -> Optional[str]:
-    """Client ID dell'app Discord: da env se presente, altrimenti dall'utente del bot"""
-    env_id = os.getenv("DISCORD_CLIENT_ID")
-    if env_id:
-        return env_id
-    if bot.user:
-        return str(bot.user.id)
-    return None
-
-
-def _invite_url(bot) -> Optional[str]:
-    """Costruisci il link di invito del bot"""
-    client_id = _client_id(bot)
-    if not client_id:
-        return None
-    query = urlencode(
-        {
-            "client_id": client_id,
-            "permissions": INVITE_PERMISSIONS,
-            "scope": INVITE_SCOPES,
-        },
-        quote_via=quote,
-    )
-    return f"https://discord.com/oauth2/authorize?{query}"
-
-
 def _uptime_seconds(bot) -> int:
     start = getattr(bot, "start_time", None)
     if not start:
@@ -79,14 +66,17 @@ def _uptime_seconds(bot) -> int:
     return int((datetime.now(timezone.utc) - start).total_seconds())
 
 
-def create_app(bot) -> FastAPI:
+def create_app(bot, auth_transport=None) -> FastAPI:
     """Create FastAPI application"""
 
     app = FastAPI(
         title="Logiq API",
         description="REST API for Logiq Discord Bot",
-        version="1.0.0"
+        version="2.0.0"
     )
+
+    auth = WebAuth(bot, transport=auth_transport)
+    owner_only = Depends(auth.require_owner)
 
     # CORS middleware
     cors_origins = bot.config.get('web', {}).get('cors_origins', ['http://localhost:3000'])
@@ -98,40 +88,50 @@ def create_app(bot) -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        if request.url.path.startswith(("/api/", "/auth/")):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    # ---------- pagine ----------
     @app.get("/", response_class=HTMLResponse)
     async def root():
         """Homepage pubblica"""
-        return _read_template(
-            "index.html",
-            "<h1>Logiq</h1><p>Homepage non trovata (web/templates/index.html).</p>",
-        )
+        return _page("index.html", "<h1>Logiq</h1><p>Homepage non trovata (web/templates/index.html).</p>")
 
-    @app.get("/admin", response_class=HTMLResponse)
+    @app.get("/dashboard", response_class=HTMLResponse)
+    async def dashboard_page():
+        """Dashboard (login con Discord)"""
+        return _page("dashboard.html", "<h1>Dashboard</h1><p>Pagina non trovata (web/templates/dashboard.html).</p>")
+
+    @app.get("/admin", include_in_schema=False)
     async def admin_dashboard():
-        """Dashboard (in arrivo)"""
-        return _read_template(
-            "admin.html",
-            "<h1>Dashboard</h1><p>In arrivo.</p>",
-        )
+        """Vecchio indirizzo dell'admin panel"""
+        return RedirectResponse("/dashboard#/admin")
 
     @app.get("/invite")
     async def invite():
         """Reindirizza al link di invito del bot"""
-        url = _invite_url(bot)
+        url = invite_url(auth.client_id)
         if not url:
             raise HTTPException(status_code=503, detail="Il bot si sta ancora avviando, riprova tra qualche secondo")
         return RedirectResponse(url)
 
+    # ---------- dati pubblici (solo numeri aggregati) ----------
     @app.get("/api/public")
     async def public_info():
-        """Dati pubblici per la homepage (solo numeri aggregati)"""
         user = bot.user
         uptime = _uptime_seconds(bot)
         return {
             "ready": bot.is_ready(),
             "name": user.name if user else "Logiq",
             "avatar_url": str(user.display_avatar.url) if user else None,
-            "invite_url": _invite_url(bot),
+            "invite_url": invite_url(auth.client_id),
             "guilds": len(bot.guilds),
             "users": sum((g.member_count or 0) for g in bot.guilds),
             "commands": len(bot.tree.get_commands()),
@@ -153,8 +153,25 @@ def create_app(bot) -> FastAPI:
             "latency": round(bot.latency * 1000) if bot.is_ready() else None
         }
 
+    @app.get("/health")
+    async def health_check():
+        """Health check endpoint"""
+        db_connected = bot.db.is_connected if hasattr(bot.db, 'is_connected') else False
+
+        return {
+            "status": "healthy" if bot.is_ready() and db_connected else "unhealthy",
+            "bot_ready": bot.is_ready(),
+            "database_connected": db_connected,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    # ---------- login e dashboard ----------
+    auth.install(app)
+    dashboard.install(app, bot, auth)
+
+    # ---------- endpoint storici: ora solo per il proprietario ----------
     @app.get("/guilds")
-    async def get_guilds():
+    async def get_guilds(session=owner_only):
         """Get list of guilds"""
         return {
             "guilds": [
@@ -169,7 +186,7 @@ def create_app(bot) -> FastAPI:
         }
 
     @app.get("/guilds/{guild_id}")
-    async def get_guild(guild_id: int):
+    async def get_guild(guild_id: int, session=owner_only):
         """Get guild details"""
         guild = bot.get_guild(guild_id)
         if not guild:
@@ -190,7 +207,7 @@ def create_app(bot) -> FastAPI:
         }
 
     @app.get("/guilds/{guild_id}/leaderboard")
-    async def get_guild_leaderboard(guild_id: int, limit: int = 10):
+    async def get_guild_leaderboard(guild_id: int, limit: int = 10, session=owner_only):
         """Get guild XP leaderboard"""
         guild = bot.get_guild(guild_id)
         if not guild:
@@ -213,7 +230,7 @@ def create_app(bot) -> FastAPI:
         }
 
     @app.get("/guilds/{guild_id}/analytics")
-    async def get_guild_analytics(guild_id: int, days: int = 7):
+    async def get_guild_analytics(guild_id: int, days: int = 7, session=owner_only):
         """Get guild analytics"""
         guild = bot.get_guild(guild_id)
         if not guild:
@@ -223,27 +240,9 @@ def create_app(bot) -> FastAPI:
         end_time = time.time()
         start_time = end_time - timedelta(days=days).total_seconds()
 
-        # Get analytics data
-        messages = await bot.db.get_analytics(
-            guild_id,
-            event_type='message',
-            start_time=start_time,
-            end_time=end_time
-        )
-
-        joins = await bot.db.get_analytics(
-            guild_id,
-            event_type='member_join',
-            start_time=start_time,
-            end_time=end_time
-        )
-
-        leaves = await bot.db.get_analytics(
-            guild_id,
-            event_type='member_leave',
-            start_time=start_time,
-            end_time=end_time
-        )
+        messages = await bot.db.get_analytics(guild_id, event_type='message', start_time=start_time, end_time=end_time)
+        joins = await bot.db.get_analytics(guild_id, event_type='member_join', start_time=start_time, end_time=end_time)
+        leaves = await bot.db.get_analytics(guild_id, event_type='member_leave', start_time=start_time, end_time=end_time)
 
         return {
             "guild_id": guild_id,
@@ -254,20 +253,8 @@ def create_app(bot) -> FastAPI:
             "net_growth": len(joins) - len(leaves)
         }
 
-    @app.get("/health")
-    async def health_check():
-        """Health check endpoint"""
-        db_connected = bot.db.is_connected if hasattr(bot.db, 'is_connected') else False
-
-        return {
-            "status": "healthy" if bot.is_ready() and db_connected else "unhealthy",
-            "bot_ready": bot.is_ready(),
-            "database_connected": db_connected,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-
     @app.get("/modules")
-    async def get_modules():
+    async def get_modules(session=owner_only):
         """Get module status"""
         modules = bot.config.get('modules', {})
         return {
